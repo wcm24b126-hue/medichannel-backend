@@ -1,19 +1,12 @@
-FROM maven:3.9.9-eclipse-temurin-21 AS build
-
-WORKDIR /workspace
-COPY . .
-RUN chmod +x ./mvnw && ./mvnw --batch-mode --no-transfer-progress -DskipTests package
-
-FROM eclipse-temurin:21-jre-jammy
-
+FROM maven:3.9-eclipse-temurin-21 AS build
 WORKDIR /app
-RUN groupadd --system --gid 10001 app \
-    && useradd --system --uid 10001 --gid app --home-dir /app app \
-    && chown app:app /app
+COPY pom.xml .
+RUN mvn -B dependency:go-offline
+COPY src ./src
+RUN mvn -B clean package -DskipTests
 
-COPY --from=build --chown=app:app \
-    /workspace/target/medichannel-0.0.1-SNAPSHOT.jar /app/medichannel.jar
-
-USER app
+FROM eclipse-temurin:21-jre
+WORKDIR /app
+COPY --from=build /app/target/*.jar app.jar
 EXPOSE 8080
-ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75.0", "-XX:+ExitOnOutOfMemoryError", "-jar", "/app/medichannel.jar"]
+ENTRYPOINT ["java", "-jar", "app.jar"]
