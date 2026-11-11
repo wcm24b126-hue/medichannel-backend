@@ -67,6 +67,21 @@ public class SecurityConfig {
                                 "/api/v1/patients/me"
                         ).hasRole("CUSTOMER")
 
+                        // Appointment operations: CUSTOMER only.
+                        .requestMatchers(
+                                HttpMethod.POST,
+                                "/api/v1/appointments"
+                        ).hasRole("CUSTOMER")
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/v1/appointments/me",
+                                "/api/v1/appointments/*"
+                        ).hasRole("CUSTOMER")
+                        .requestMatchers(
+                                HttpMethod.PATCH,
+                                "/api/v1/appointments/*/cancel"
+                        ).hasRole("CUSTOMER")
+
                         // Public doctor directory and details.
                         .requestMatchers(
                                 HttpMethod.GET,
@@ -107,6 +122,18 @@ public class SecurityConfig {
                         .requestMatchers(
                                 HttpMethod.PATCH,
                                 "/api/v1/specialisations/**"
+                        ).hasAnyRole("ADMIN", "MANAGER")
+
+                        // Public session discovery.
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/v1/sessions"
+                        ).permitAll()
+
+                        // Doctor session creation: Admin or Manager only.
+                        .requestMatchers(
+                                HttpMethod.POST,
+                                "/api/v1/sessions"
                         ).hasAnyRole("ADMIN", "MANAGER")
 
                         // Room management: Admin or Manager only.

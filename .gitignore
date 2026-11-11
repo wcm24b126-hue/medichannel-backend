@@ -49,3 +49,4 @@ logs/
 target/
 .DS_Store
 Thumbs.db
+.neon

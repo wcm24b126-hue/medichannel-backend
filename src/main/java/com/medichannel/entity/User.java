@@ -105,13 +105,16 @@ public class User {
         return lockedUntil != null && lockedUntil.isAfter(now);
     }
 
-    // Clear an expired lock and restore the appropriate account status.
+    // Clear an expired temporary lock without changing
+    // independently managed account restrictions.
     public void clearExpiredLock(Instant now) {
         if (lockedUntil != null && !lockedUntil.isAfter(now)) {
             lockedUntil = null;
             failedLoginAttempts = 0;
 
-            accountStatus = emailVerified ? "ACTIVE" : "PENDING";
+            if ("LOCKED".equals(accountStatus)) {
+                accountStatus = emailVerified ? "ACTIVE" : "PENDING";
+            }
         }
     }
 

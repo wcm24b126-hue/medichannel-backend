@@ -43,6 +43,10 @@ public class DoctorSession {
     @Column(name = "max_appointments", nullable = false)
     private int maxAppointments;
 
+    // Allocated by the PostgreSQL trigger. Hibernate must never modify it.
+    @Column(name = "last_appointment_number", insertable = false, updatable = false)
+    private int lastAppointmentNumber;
+
     @Column(name = "minutes_per_patient", nullable = false)
     private int minutesPerPatient = 10;
 
@@ -178,6 +182,10 @@ public class DoctorSession {
 
     public int getMaxAppointments() {
         return maxAppointments;
+    }
+
+    public int getLastAppointmentNumber() {
+        return lastAppointmentNumber;
     }
 
     public int getMinutesPerPatient() {
