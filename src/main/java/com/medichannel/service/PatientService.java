@@ -92,6 +92,55 @@ public class PatientService {
         return toResponse(savedPatient);
     }
 
+    @Transactional
+    public PatientProfileResponse updateMyProfile(
+            UUID userId,
+            PatientProfileRequest request
+    ) {
+        getEligibleCustomer(userId);
+
+        Patient patient = patientRepository.findByUserId(userId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Patient profile not found."
+                ));
+
+        if (request == null) {
+            throw new IllegalArgumentException(
+                    "Patient profile information is required."
+            );
+        }
+
+        String normalizedNic = normalizeNic(request.nic());
+        String nicHash = normalizedNic == null
+                ? patient.getNicLookupHash()
+                : protectionService.createNicLookupHash(normalizedNic);
+
+        if (nicHash != null
+                && !nicHash.equals(patient.getNicLookupHash())
+                && patientRepository.existsByNicLookupHash(nicHash)) {
+            throw new ConflictException(
+                    "This NIC is already registered."
+            );
+        }
+
+        patient.updateProfile(
+                protectionService.encrypt(request.firstName().trim()),
+                protectionService.encrypt(request.lastName().trim()),
+                protectionService.encrypt(normalizeOptional(request.phone())),
+                nicHash,
+                protectionService.encrypt(
+                        request.dateOfBirth() == null
+                                ? null
+                                : request.dateOfBirth().toString()
+                ),
+                protectionService.encrypt(
+                        normalizeOptional(request.gender())
+                )
+        );
+
+        return toResponse(patientRepository.saveAndFlush(patient));
+    }
+
     @Transactional(readOnly = true)
     public PatientProfileResponse getMyProfile(UUID userId) {
 

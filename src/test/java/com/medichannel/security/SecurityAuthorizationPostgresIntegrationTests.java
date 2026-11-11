@@ -16,7 +16,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
     "spring.datasource.username=postgres",
     "spring.datasource.password=local_test_only_password",
     "spring.datasource.driver-class-name=org.postgresql.Driver",
-    "spring.flyway.enabled=false",
+    "spring.flyway.enabled=true",
     "spring.jpa.hibernate.ddl-auto=validate",
     "spring.jpa.show-sql=false",
     "spring.jpa.open-in-view=false",
@@ -80,6 +80,21 @@ class SecurityAuthorizationPostgresIntegrationTests {
         mockMvc.perform(
             get("/api/v1/rooms")
         ).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void unauthenticatedUserCannotReadCurrentUserEndpoint() throws Exception {
+        mockMvc.perform(get("/api/v1/auth/me"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void authenticatedUserCanReadCurrentUserEndpoint() throws Exception {
+        mockMvc.perform(get("/api/v1/auth/me").with(jwt().jwt(jwt -> jwt
+                        .subject("94d1f5a4-b77e-4d33-a7f4-13b9d1da1fa3")
+                        .claim("email", "customer@example.com")
+                        .claim("role", "CUSTOMER"))))
+                .andExpect(status().isOk());
     }
 
     @Test

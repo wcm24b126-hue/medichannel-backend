@@ -1,5 +1,6 @@
 package com.medichannel.repository;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -17,6 +18,12 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     Optional<User> findByEmail(String email);
 
     boolean existsByEmail(String email);
+
+    List<User> findAllByOrderByCreatedAtDesc();
+
+    List<User> findAllByRole_NameOrderByCreatedAtDesc(String roleName);
+
+    long countByAccountStatus(String accountStatus);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""

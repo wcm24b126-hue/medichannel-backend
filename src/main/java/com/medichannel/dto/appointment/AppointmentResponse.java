@@ -8,6 +8,8 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 import com.medichannel.enums.AppointmentStatus;
+import com.medichannel.enums.ConsultationType;
+import com.medichannel.enums.PaymentMethod;
 import com.medichannel.enums.PaymentStatus;
 
 public record AppointmentResponse(
@@ -25,7 +27,20 @@ public record AppointmentResponse(
         PaymentStatus paymentStatus,
 
         BigDecimal consultationFeeLkr,
-        Instant bookedAt
+        Instant bookedAt,
+
+        // Additional display information. Existing fields above are
+        // unchanged for frontend compatibility.
+        UUID doctorId,
+        String doctorName,
+        String specialisation,
+        ConsultationType consultationType,
+        String roomNumber,
+        PaymentMethod paymentMethod,
+        Instant arrivedAt,
+        Instant consultationStartedAt,
+        Instant consultationCompletedAt,
+        Instant cancelledAt
 
 ) {
 }

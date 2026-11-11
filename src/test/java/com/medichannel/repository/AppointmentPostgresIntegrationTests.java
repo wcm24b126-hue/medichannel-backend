@@ -40,7 +40,7 @@ import static org.assertj.core.api.Assertions.assertThat;
     "spring.datasource.username=postgres",
     "spring.datasource.password=local_test_only_password",
     "spring.datasource.driver-class-name=org.postgresql.Driver",
-    "spring.flyway.enabled=false",
+    "spring.flyway.enabled=true",
     "spring.jpa.hibernate.ddl-auto=validate",
     "spring.jpa.show-sql=false",
     "spring.jpa.open-in-view=false",

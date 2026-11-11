@@ -1,6 +1,7 @@
 package com.medichannel.service;
 
 import java.time.Clock;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -10,14 +11,17 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.medichannel.config.TimeConfiguration;
+import com.medichannel.dto.admin.AdminAppointmentResponse;
 import com.medichannel.dto.appointment.AppointmentBookingRequest;
 import com.medichannel.dto.appointment.AppointmentResponse;
+import com.medichannel.dto.doctor.DoctorAppointmentResponse;
 import com.medichannel.entity.Appointment;
 import com.medichannel.entity.DoctorSession;
 import com.medichannel.entity.Patient;
 import com.medichannel.entity.User;
 import com.medichannel.enums.AppointmentStatus;
 import com.medichannel.enums.ConsultationType;
+import com.medichannel.enums.NotificationType;
 import com.medichannel.enums.PaymentStatus;
 import com.medichannel.enums.SessionStatus;
 import com.medichannel.exception.ConflictException;
@@ -44,6 +48,8 @@ public class AppointmentService {
     private final PatientRepository patientRepository;
     private final UserRepository userRepository;
     private final PatientDataProtectionService dataProtectionService;
+    private final NotificationService notificationService;
+    private final AppointmentAccessPolicy accessPolicy;
     private final Clock clock;
 
     public AppointmentService(
@@ -52,6 +58,8 @@ public class AppointmentService {
             PatientRepository patientRepository,
             UserRepository userRepository,
             PatientDataProtectionService dataProtectionService,
+            NotificationService notificationService,
+            AppointmentAccessPolicy accessPolicy,
             Clock clock
     ) {
         this.appointmentRepository = appointmentRepository;
@@ -59,6 +67,8 @@ public class AppointmentService {
         this.patientRepository = patientRepository;
         this.userRepository = userRepository;
         this.dataProtectionService = dataProtectionService;
+        this.notificationService = notificationService;
+        this.accessPolicy = accessPolicy;
         this.clock = clock;
     }
 
@@ -115,6 +125,8 @@ public class AppointmentService {
                         "Database appointment number was not returned."
                 );
             }
+
+            notifyAppointmentBooked(saved);
 
             return toResponse(saved);
 
@@ -213,7 +225,360 @@ public class AppointmentService {
                 appointment
         );
 
+        notifyAppointmentCancelled(saved);
+
         return toResponse(saved);
+    }
+
+    // PATCH: Patient check-in for their own booked appointment.
+    @Transactional
+    public AppointmentResponse checkIn(
+            UUID userId,
+            UUID appointmentId
+    ) {
+        getEligiblePatient(userId);
+
+        Appointment appointment = appointmentRepository
+                .findByIdAndPatient_User_Id(appointmentId, userId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Appointment was not found."
+                ));
+
+        if (appointment.getStatus() != AppointmentStatus.BOOKED) {
+            throw new ConflictException(
+                    "Only booked appointments can be checked in."
+            );
+        }
+
+        appointment.markArrived(clock.instant());
+        Appointment saved = appointmentRepository.saveAndFlush(
+                appointment
+        );
+
+        notificationService.create(
+                saved.getSession().getDoctor().getUser().getId(),
+                NotificationType.APPOINTMENT_ARRIVED,
+                "Patient checked in",
+                "The patient for appointment #"
+                        + saved.getAppointmentNumber()
+                        + " has checked in.",
+                saved.getId()
+        );
+
+        return toResponse(saved);
+    }
+
+    // =========================================================
+    // Doctor consultation portal
+    // =========================================================
+
+    @Transactional(readOnly = true)
+    public List<DoctorAppointmentResponse> getDoctorAppointments(
+            UUID doctorUserId,
+            LocalDate date,
+            AppointmentStatus status
+    ) {
+        List<Appointment> appointments;
+
+        if (date != null && status != null) {
+            appointments = appointmentRepository
+                    .findAllBySession_Doctor_User_IdAndSession_SessionDateAndStatusOrderBySession_StartTimeAsc(
+                            doctorUserId,
+                            date,
+                            status
+                    );
+        } else if (date != null) {
+            appointments = appointmentRepository
+                    .findAllBySession_Doctor_User_IdAndSession_SessionDateOrderBySession_StartTimeAsc(
+                            doctorUserId,
+                            date
+                    );
+        } else if (status != null) {
+            appointments = appointmentRepository
+                    .findAllBySession_Doctor_User_IdAndStatusOrderBySession_SessionDateDescSession_StartTimeAsc(
+                            doctorUserId,
+                            status
+                    );
+        } else {
+            appointments = appointmentRepository
+                    .findAllBySession_Doctor_User_IdOrderBySession_SessionDateDescSession_StartTimeAsc(
+                            doctorUserId
+                    );
+        }
+
+        return appointments.stream()
+                .map(this::toDoctorResponse)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public DoctorAppointmentResponse getDoctorAppointment(
+            UUID doctorUserId,
+            UUID appointmentId
+    ) {
+        return toDoctorResponse(
+                findDoctorAppointment(doctorUserId, appointmentId)
+        );
+    }
+
+    @Transactional
+    public DoctorAppointmentResponse markArrived(
+            UUID doctorUserId,
+            UUID appointmentId
+    ) {
+        Appointment appointment = findDoctorAppointment(
+                doctorUserId,
+                appointmentId
+        );
+
+        if (appointment.getStatus() != AppointmentStatus.BOOKED) {
+            throw new ConflictException(
+                    "Only booked appointments can be marked as arrived."
+            );
+        }
+
+        appointment.markArrived(clock.instant());
+
+        Appointment saved = appointmentRepository.saveAndFlush(
+                appointment
+        );
+
+        notificationService.create(
+                saved.getPatient().getUser().getId(),
+                NotificationType.APPOINTMENT_ARRIVED,
+                "You are checked in",
+                "Your arrival for appointment #"
+                        + saved.getAppointmentNumber()
+                        + " has been recorded.",
+                saved.getId()
+        );
+
+        return toDoctorResponse(saved);
+    }
+
+    @Transactional
+    public DoctorAppointmentResponse startConsultation(
+            UUID doctorUserId,
+            UUID appointmentId
+    ) {
+        Appointment appointment = findDoctorAppointment(
+                doctorUserId,
+                appointmentId
+        );
+
+        ensureSessionAcceptsConsultation(appointment);
+
+        if (appointment.getStatus() != AppointmentStatus.BOOKED
+                && appointment.getStatus() != AppointmentStatus.ARRIVED) {
+            throw new ConflictException(
+                    "The consultation cannot be started from its current status."
+            );
+        }
+
+        if (appointment.getPaymentStatus() != PaymentStatus.PAID) {
+            throw new ConflictException(
+                    "The appointment must be paid before the consultation can start."
+            );
+        }
+
+        appointment.startConsultation(clock.instant());
+
+        Appointment saved = appointmentRepository.saveAndFlush(
+                appointment
+        );
+
+        notificationService.create(
+                saved.getPatient().getUser().getId(),
+                NotificationType.CONSULTATION_STARTED,
+                "Consultation started",
+                "Your consultation has started. You can now use the consultation chat.",
+                saved.getId()
+        );
+
+        return toDoctorResponse(saved);
+    }
+
+    @Transactional
+    public DoctorAppointmentResponse completeConsultation(
+            UUID doctorUserId,
+            UUID appointmentId
+    ) {
+        Appointment appointment = findDoctorAppointment(
+                doctorUserId,
+                appointmentId
+        );
+
+        if (appointment.getStatus() != AppointmentStatus.IN_CONSULTATION) {
+            throw new ConflictException(
+                    "Only a consultation in progress can be completed."
+            );
+        }
+
+        appointment.complete(clock.instant());
+
+        Appointment saved = appointmentRepository.saveAndFlush(
+                appointment
+        );
+
+        notificationService.create(
+                saved.getPatient().getUser().getId(),
+                NotificationType.CONSULTATION_COMPLETED,
+                "Consultation completed",
+                "Your consultation is complete. The doctor can now publish a summary.",
+                saved.getId()
+        );
+
+        return toDoctorResponse(saved);
+    }
+
+    @Transactional
+    public DoctorAppointmentResponse markNoShow(
+            UUID doctorUserId,
+            UUID appointmentId
+    ) {
+        Appointment appointment = findDoctorAppointment(
+                doctorUserId,
+                appointmentId
+        );
+
+        if (appointment.getStatus() != AppointmentStatus.BOOKED
+                && appointment.getStatus() != AppointmentStatus.ARRIVED) {
+            throw new ConflictException(
+                    "This appointment cannot be marked as a no-show."
+            );
+        }
+
+        appointment.markNoShow();
+
+        Appointment saved = appointmentRepository.saveAndFlush(
+                appointment
+        );
+
+        notificationService.create(
+                saved.getPatient().getUser().getId(),
+                NotificationType.APPOINTMENT_CANCELLED,
+                "Appointment marked as no-show",
+                "You did not attend appointment #"
+                        + saved.getAppointmentNumber()
+                        + ".",
+                saved.getId()
+        );
+
+        return toDoctorResponse(saved);
+    }
+
+    // =========================================================
+    // Administrative oversight
+    // =========================================================
+
+    @Transactional(readOnly = true)
+    public List<AdminAppointmentResponse> getForOversight(
+            UUID sessionId,
+            UUID doctorId,
+            AppointmentStatus status,
+            LocalDate sessionDate
+    ) {
+        return appointmentRepository.findForOversight(
+                sessionId,
+                doctorId,
+                status,
+                sessionDate
+        ).stream().map(this::toAdminResponse).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public AdminAppointmentResponse getForOversight(UUID appointmentId) {
+        Appointment appointment = appointmentRepository
+                .findById(appointmentId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Appointment was not found."
+                ));
+
+        return toAdminResponse(appointment);
+    }
+
+    private Appointment findDoctorAppointment(
+            UUID doctorUserId,
+            UUID appointmentId
+    ) {
+        Appointment appointment = appointmentRepository
+                .findByIdAndSession_Doctor_User_Id(
+                        appointmentId,
+                        doctorUserId
+                )
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Appointment was not found."
+                ));
+
+        if (!accessPolicy.isAssignedDoctor(appointment, doctorUserId)) {
+            throw new ForbiddenOperationException(
+                    "Only the assigned doctor can manage this consultation."
+            );
+        }
+
+        return appointment;
+    }
+
+    private void ensureSessionAcceptsConsultation(Appointment appointment) {
+        SessionStatus status = appointment.getSession().getStatus();
+
+        if (status == SessionStatus.CANCELLED
+                || status == SessionStatus.COMPLETED
+                || status == SessionStatus.SCHEDULED) {
+            throw new ConflictException(
+                    "The consultation session is not currently active."
+            );
+        }
+    }
+
+    private void notifyAppointmentBooked(Appointment appointment) {
+        String when = appointment.getSession().getSessionDate()
+                + " at " + appointment.getSession().getStartTime();
+
+        notificationService.create(
+                appointment.getPatient().getUser().getId(),
+                NotificationType.APPOINTMENT_BOOKED,
+                "Appointment booked",
+                "Appointment #"
+                        + appointment.getAppointmentNumber()
+                        + " is booked for " + when + ".",
+                appointment.getId()
+        );
+
+        notificationService.create(
+                appointment.getSession().getDoctor().getUser().getId(),
+                NotificationType.APPOINTMENT_BOOKED,
+                "New appointment booked",
+                "A patient booked appointment #"
+                        + appointment.getAppointmentNumber()
+                        + " for " + when + ".",
+                appointment.getId()
+        );
+    }
+
+    private void notifyAppointmentCancelled(Appointment appointment) {
+        String when = appointment.getSession().getSessionDate()
+                + " at " + appointment.getSession().getStartTime();
+
+        notificationService.create(
+                appointment.getPatient().getUser().getId(),
+                NotificationType.APPOINTMENT_CANCELLED,
+                "Appointment cancelled",
+                "Appointment #"
+                        + appointment.getAppointmentNumber()
+                        + " on " + when + " was cancelled.",
+                appointment.getId()
+        );
+
+        notificationService.create(
+                appointment.getSession().getDoctor().getUser().getId(),
+                NotificationType.APPOINTMENT_CANCELLED,
+                "Appointment cancelled",
+                "The patient cancelled appointment #"
+                        + appointment.getAppointmentNumber()
+                        + " on " + when + ".",
+                appointment.getId()
+        );
     }
 
     private Patient getEligiblePatient(UUID userId) {
@@ -278,16 +643,6 @@ public class AppointmentService {
 
         DoctorSession session = appointment.getSession();
 
-        LocalDateTime estimatedConsultationTime =
-                LocalDateTime.of(
-                        session.getSessionDate(),
-                        session.getStartTime()
-                ).plusMinutes(
-                        (long) (appointment.getAppointmentNumber() - 1)
-                                * session.getMinutesPerPatient()
-                                + session.getDelayMinutes()
-                );
-
         return new AppointmentResponse(
                 appointment.getId(),
                 appointment.getBookingReference(),
@@ -295,11 +650,114 @@ public class AppointmentService {
                 appointment.getAppointmentNumber(),
                 session.getSessionDate(),
                 session.getStartTime(),
-                estimatedConsultationTime,
+                estimatedConsultationTime(appointment),
                 appointment.getStatus(),
                 appointment.getPaymentStatus(),
                 session.getFeeLkr(),
-                appointment.getCreatedAt()
+                appointment.getCreatedAt(),
+                session.getDoctor().getId(),
+                session.getDoctor().getFirstName()
+                        + " " + session.getDoctor().getLastName(),
+                session.getDoctor().getSpecialisation().getName(),
+                session.getConsultationType(),
+                session.getRoom() == null
+                        ? null
+                        : session.getRoom().getRoomNumber(),
+                appointment.getPaymentMethod(),
+                appointment.getArrivedAt(),
+                appointment.getConsultationStartedAt(),
+                appointment.getConsultationCompletedAt(),
+                appointment.getCancelledAt()
+        );
+    }
+
+    private LocalDateTime estimatedConsultationTime(
+            Appointment appointment
+    ) {
+        DoctorSession session = appointment.getSession();
+
+        return LocalDateTime.of(
+                session.getSessionDate(),
+                session.getStartTime()
+        ).plusMinutes(
+                (long) (appointment.getAppointmentNumber() - 1)
+                        * session.getMinutesPerPatient()
+                        + session.getDelayMinutes()
+        );
+    }
+
+    private DoctorAppointmentResponse toDoctorResponse(
+            Appointment appointment
+    ) {
+        DoctorSession session = appointment.getSession();
+        Patient patient = appointment.getPatient();
+
+        String patientName = dataProtectionService.decrypt(
+                patient.getFirstNameEncrypted()
+        ) + " " + dataProtectionService.decrypt(
+                patient.getLastNameEncrypted()
+        );
+
+        return new DoctorAppointmentResponse(
+                appointment.getId(),
+                appointment.getBookingReference(),
+                appointment.getAppointmentNumber(),
+                session.getId(),
+                patient.getId(),
+                patientName,
+                session.getSessionDate(),
+                session.getStartTime(),
+                estimatedConsultationTime(appointment),
+                session.getConsultationType(),
+                session.getRoom() == null
+                        ? null
+                        : session.getRoom().getRoomNumber(),
+                appointment.getStatus(),
+                appointment.getPaymentStatus(),
+                appointment.getPaymentMethod(),
+                session.getFeeLkr(),
+                appointment.getCreatedAt(),
+                appointment.getArrivedAt(),
+                appointment.getConsultationStartedAt(),
+                appointment.getConsultationCompletedAt(),
+                appointment.getCancelledAt()
+        );
+    }
+
+    private AdminAppointmentResponse toAdminResponse(
+            Appointment appointment
+    ) {
+        DoctorSession session = appointment.getSession();
+        Patient patient = appointment.getPatient();
+
+        String patientName = dataProtectionService.decrypt(
+                patient.getFirstNameEncrypted()
+        ) + " " + dataProtectionService.decrypt(
+                patient.getLastNameEncrypted()
+        );
+
+        return new AdminAppointmentResponse(
+                appointment.getId(),
+                appointment.getBookingReference(),
+                appointment.getAppointmentNumber(),
+                session.getId(),
+                session.getDoctor().getId(),
+                session.getDoctor().getFirstName()
+                        + " " + session.getDoctor().getLastName(),
+                patient.getId(),
+                patientName,
+                session.getSessionDate(),
+                session.getStartTime(),
+                session.getConsultationType(),
+                appointment.getStatus(),
+                appointment.getPaymentStatus(),
+                appointment.getPaymentMethod(),
+                session.getFeeLkr(),
+                appointment.getCreatedAt(),
+                appointment.getArrivedAt(),
+                appointment.getConsultationStartedAt(),
+                appointment.getConsultationCompletedAt(),
+                appointment.getCancelledAt()
         );
     }
 }

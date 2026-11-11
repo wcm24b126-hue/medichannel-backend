@@ -1,5 +1,6 @@
 package com.medichannel.security;
 
+import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -29,6 +30,14 @@ public class WebSocketAuthorizationInterceptor
             Pattern.compile(
                     "^/app/appointments/([0-9a-fA-F-]{36})/chat$"
             );
+
+    // Private per-user queues. Spring resolves /user/... to the
+    // authenticated session, so one user can never read another
+    // user's queue.
+    private static final Set<String> ALLOWED_USER_SUBSCRIPTIONS = Set.of(
+            "/user/queue/notifications",
+            "/user/queue/errors"
+    );
 
     private final ConsultationAccessService accessService;
 
@@ -70,6 +79,18 @@ public class WebSocketAuthorizationInterceptor
                     message,
                     "WebSocket destination is required."
             );
+        }
+
+        if (command == StompCommand.SUBSCRIBE
+                && ALLOWED_USER_SUBSCRIPTIONS.contains(destination)) {
+            if (accessor.getUser() == null) {
+                throw new MessageDeliveryException(
+                        message,
+                        "WebSocket authentication is required."
+                );
+            }
+
+            return message;
         }
 
         Pattern expectedPattern;

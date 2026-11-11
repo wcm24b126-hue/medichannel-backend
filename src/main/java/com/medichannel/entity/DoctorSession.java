@@ -102,8 +102,11 @@ public class DoctorSession {
     }
 
     public void cancel() {
-        if (status == SessionStatus.COMPLETED) {
-            throw new IllegalStateException("Completed sessions cannot be cancelled");
+        if (status == SessionStatus.COMPLETED
+                || status == SessionStatus.CANCELLED) {
+            throw new IllegalStateException(
+                    "This session cannot be cancelled"
+            );
         }
         this.status = SessionStatus.CANCELLED;
     }
@@ -113,6 +116,24 @@ public class DoctorSession {
             throw new IllegalStateException("Only in-progress sessions can be completed");
         }
         this.status = SessionStatus.COMPLETED;
+    }
+
+    public void updateSchedule(
+            Doctor doctor,
+            Room room,
+            LocalDate sessionDate,
+            LocalTime startTime,
+            LocalTime endTime,
+            ConsultationType consultationType,
+            int maxAppointments
+    ) {
+        this.doctor = doctor;
+        this.room = room;
+        this.sessionDate = sessionDate;
+        this.startTime = startTime;
+        this.endTime = endTime;
+        this.consultationType = consultationType;
+        this.maxAppointments = maxAppointments;
     }
 
     public void updateDelay(int delayMinutes) {

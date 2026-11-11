@@ -145,6 +145,35 @@ public class User {
         this.accountStatus = "ACTIVE";
     }
 
+    // Administrator approval. This also clears any temporary lock.
+    public void activateByAdministrator() {
+        this.emailVerified = true;
+        this.accountStatus = "ACTIVE";
+        this.failedLoginAttempts = 0;
+        this.lockedUntil = null;
+    }
+
+    public void suspend() {
+        this.accountStatus = "SUSPENDED";
+        this.lockedUntil = null;
+    }
+
+    public void disable() {
+        this.accountStatus = "DISABLED";
+        this.lockedUntil = null;
+    }
+
+    // Remove a temporary lock without granting a new verification status.
+    public void unlock() {
+        if (!"LOCKED".equals(accountStatus)) {
+            return;
+        }
+
+        this.lockedUntil = null;
+        this.failedLoginAttempts = 0;
+        this.accountStatus = emailVerified ? "ACTIVE" : "PENDING";
+    }
+
     public UUID getId() {
         return id;
     }

@@ -186,6 +186,17 @@ public class DoctorService {
         return toResponse(doctor);
     }
 
+    @Transactional(readOnly = true)
+    public DoctorResponse getProfileForUser(UUID userId) {
+        Doctor doctor = doctorRepository
+                .findByUserIdWithSpecialisation(userId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Doctor profile not found."
+                ));
+
+        return toResponse(doctor);
+    }
+
     private Doctor findDoctor(UUID doctorId) {
         return doctorRepository.findById(doctorId)
                 .orElseThrow(() -> new ResourceNotFoundException(

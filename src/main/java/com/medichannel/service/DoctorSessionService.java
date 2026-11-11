@@ -3,6 +3,7 @@ package com.medichannel.service;
 import java.math.BigDecimal;
 import java.sql.SQLException;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -96,6 +97,133 @@ public class DoctorSessionService {
         }
     }
 
+    // Update an existing scheduled or open session.
+    @Transactional
+    public DoctorSessionResponse updateSession(
+            UUID sessionId,
+            DoctorSessionRequest request
+    ) {
+        validateRequest(request);
+
+        DoctorSession session = doctorSessionRepository
+                .findById(sessionId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Doctor session was not found."
+                ));
+
+        if (session.getStatus() == SessionStatus.CANCELLED
+                || session.getStatus() == SessionStatus.COMPLETED) {
+            throw new ConflictException(
+                    "Cancelled or completed sessions cannot be edited."
+            );
+        }
+
+        if (request.maxAppointments()
+                < session.getLastAppointmentNumber()) {
+            throw new ConflictException(
+                    "Maximum appointments cannot be lower than the number already booked."
+            );
+        }
+
+        Doctor doctor = doctorRepository
+                .findPublicDoctorById(request.doctorId())
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "An eligible doctor was not found."
+                ));
+
+        Room room = resolveRoom(
+                request.roomId(),
+                request.consultationType()
+        );
+
+        session.updateSchedule(
+                doctor,
+                room,
+                request.sessionDate(),
+                request.startTime(),
+                request.endTime(),
+                request.consultationType(),
+                request.maxAppointments()
+        );
+
+        session.updateSchedulingDetails(
+                request.minutesPerPatient(),
+                request.feeLkr()
+        );
+
+        try {
+            return toResponse(
+                    doctorSessionRepository.saveAndFlush(session)
+            );
+        } catch (DataIntegrityViolationException exception) {
+            if (hasSqlState(exception, "23P01")) {
+                throw new ConflictException(
+                        "The doctor or room already has an overlapping session."
+                );
+            }
+
+            throw exception;
+        }
+    }
+
+    @Transactional
+    public DoctorSessionResponse openSession(UUID sessionId) {
+        DoctorSession session = findSession(sessionId);
+        applyTransition(() -> session.open());
+        return toResponse(session);
+    }
+
+    @Transactional
+    public DoctorSessionResponse startSession(UUID sessionId) {
+        DoctorSession session = findSession(sessionId);
+        applyTransition(() -> session.start());
+        return toResponse(session);
+    }
+
+    @Transactional
+    public DoctorSessionResponse completeSession(UUID sessionId) {
+        DoctorSession session = findSession(sessionId);
+        applyTransition(() -> session.complete());
+        return toResponse(session);
+    }
+
+    @Transactional
+    public DoctorSessionResponse cancelSession(UUID sessionId) {
+        DoctorSession session = findSession(sessionId);
+        applyTransition(() -> session.cancel());
+        return toResponse(session);
+    }
+
+    @Transactional
+    public DoctorSessionResponse updateDelay(
+            UUID sessionId,
+            int delayMinutes
+    ) {
+        DoctorSession session = findSession(sessionId);
+        session.updateDelay(delayMinutes);
+        return toResponse(session);
+    }
+
+    // Doctor portal: the authenticated doctor's own sessions.
+    @Transactional(readOnly = true)
+    public List<DoctorSessionResponse> getDoctorSessions(
+            UUID doctorUserId,
+            LocalDate sessionDate
+    ) {
+        List<DoctorSession> sessions = sessionDate == null
+                ? doctorSessionRepository
+                        .findByDoctor_User_IdOrderBySessionDateDescStartTimeDesc(
+                                doctorUserId
+                        )
+                : doctorSessionRepository
+                        .findByDoctor_User_IdAndSessionDateOrderByStartTimeAsc(
+                                doctorUserId,
+                                sessionDate
+                        );
+
+        return sessions.stream().map(this::toResponse).toList();
+    }
+
     // Public discovery of future sessions that still have capacity.
     @Transactional(readOnly = true)
     public List<DoctorSessionResponse> getPublicSessions(
@@ -126,6 +254,21 @@ public class DoctorSessionService {
                 ));
 
         return toResponse(session);
+    }
+
+    private DoctorSession findSession(UUID sessionId) {
+        return doctorSessionRepository.findById(sessionId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Doctor session was not found."
+                ));
+    }
+
+    private void applyTransition(Runnable transition) {
+        try {
+            transition.run();
+        } catch (IllegalStateException exception) {
+            throw new ConflictException(exception.getMessage());
+        }
     }
 
     private void validateRequest(DoctorSessionRequest request) {
@@ -175,6 +318,18 @@ public class DoctorSessionService {
                 || request.minutesPerPatient() > 30) {
             throw new IllegalArgumentException(
                     "Minutes per patient must be between 5 and 30."
+            );
+        }
+
+        long availableMinutes = Duration.between(
+                request.startTime(),
+                request.endTime()
+        ).toMinutes();
+
+        if ((long) request.maxAppointments()
+                * request.minutesPerPatient() > availableMinutes) {
+            throw new IllegalArgumentException(
+                    "The session duration is too short for the requested number of appointments."
             );
         }
 

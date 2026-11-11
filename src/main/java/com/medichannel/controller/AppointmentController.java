@@ -82,4 +82,16 @@ public class AppointmentController {
                 )
         );
     }
+
+    @PatchMapping("/{appointmentId}/check-in")
+    public ResponseEntity<AppointmentResponse> checkIn(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID appointmentId
+    ) {
+        UUID userId = UUID.fromString(jwt.getSubject());
+
+        return ResponseEntity.ok(
+                appointmentService.checkIn(userId, appointmentId)
+        );
+    }
 }

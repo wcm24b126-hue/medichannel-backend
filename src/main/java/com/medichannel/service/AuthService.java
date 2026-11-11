@@ -4,6 +4,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 import java.util.Optional;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,6 +31,7 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final LoginAttemptService loginAttemptService;
+    private final boolean autoActivateRegistrations;
 
     private final String dummyPasswordHash;
 
@@ -38,13 +40,16 @@ public class AuthService {
             RoleRepository roleRepository,
             PasswordEncoder passwordEncoder,
             JwtService jwtService,
-            LoginAttemptService loginAttemptService
+            LoginAttemptService loginAttemptService,
+            @Value("${app.registration.auto-activate:true}")
+            boolean autoActivateRegistrations
     ) {
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
         this.loginAttemptService = loginAttemptService;
+        this.autoActivateRegistrations = autoActivateRegistrations;
 
         // Used to reduce timing differences when an email does not exist.
         this.dummyPasswordHash = passwordEncoder.encode(
@@ -102,8 +107,17 @@ public class AuthService {
 
         User savedUser = userRepository.saveAndFlush(user);
 
+        if (autoActivateRegistrations) {
+            savedUser.activateAfterVerification();
+            savedUser = userRepository.saveAndFlush(savedUser);
+        }
+
+        String message = autoActivateRegistrations
+                ? "Registration successful. You can now sign in."
+                : "Registration received. Your account is pending activation.";
+
         return new RegisterResponse(
-                "Registration received. Your account is pending activation.",
+                message,
                 savedUser.getId(),
                 savedUser.getEmail(),
                 savedUser.getAccountStatus()

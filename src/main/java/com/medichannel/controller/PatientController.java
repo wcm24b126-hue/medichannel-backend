@@ -49,4 +49,16 @@ public class PatientController {
                 patientService.getMyProfile(userId)
         );
     }
+
+    @PutMapping("/me")
+    public ResponseEntity<PatientProfileResponse> updateMyProfile(
+            @AuthenticationPrincipal Jwt jwt,
+            @Valid @RequestBody PatientProfileRequest request
+    ) {
+        UUID userId = UUID.fromString(jwt.getSubject());
+
+        return ResponseEntity.ok(
+                patientService.updateMyProfile(userId, request)
+        );
+    }
 }

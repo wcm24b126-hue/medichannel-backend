@@ -113,6 +113,15 @@ public class Appointment {
     @Column(name = "cancelled_at")
     private Instant cancelledAt;
 
+    @Column(name = "arrived_at")
+    private Instant arrivedAt;
+
+    @Column(name = "consultation_started_at")
+    private Instant consultationStartedAt;
+
+    @Column(name = "consultation_completed_at")
+    private Instant consultationCompletedAt;
+
     protected Appointment() {
     }
 
@@ -193,17 +202,24 @@ public class Appointment {
         this.paymentStatus = PaymentStatus.PAID;
     }
 
-    public void markArrived() {
+    public void markArrived(Instant arrivalTime) {
         if (status != AppointmentStatus.BOOKED) {
             throw new IllegalStateException(
                 "Only booked appointments can be marked as arrived."
             );
         }
 
+        if (arrivalTime == null) {
+            throw new IllegalArgumentException(
+                "Arrival time is required."
+            );
+        }
+
+        this.arrivedAt = arrivalTime;
         status = AppointmentStatus.ARRIVED;
     }
 
-    public void startConsultation() {
+    public void startConsultation(Instant startTime) {
         if (status != AppointmentStatus.BOOKED
                 && status != AppointmentStatus.ARRIVED) {
             throw new IllegalStateException(
@@ -211,16 +227,42 @@ public class Appointment {
             );
         }
 
+        if (startTime == null) {
+            throw new IllegalArgumentException(
+                "Consultation start time is required."
+            );
+        }
+
+        if (status == AppointmentStatus.BOOKED) {
+            // The doctor may start without a separate check-in step.
+            this.arrivedAt = startTime;
+        }
+
+        this.consultationStartedAt = startTime;
         status = AppointmentStatus.IN_CONSULTATION;
     }
 
-    public void complete() {
+    public void complete(Instant completionTime) {
         if (status != AppointmentStatus.IN_CONSULTATION) {
             throw new IllegalStateException(
                 "Only appointments in consultation can be completed."
             );
         }
 
+        if (completionTime == null) {
+            throw new IllegalArgumentException(
+                "Consultation completion time is required."
+            );
+        }
+
+        if (consultationStartedAt == null
+                || completionTime.isBefore(consultationStartedAt)) {
+            throw new IllegalArgumentException(
+                "Completion time cannot be before the consultation start."
+            );
+        }
+
+        this.consultationCompletedAt = completionTime;
         status = AppointmentStatus.COMPLETED;
     }
 
@@ -297,5 +339,17 @@ public class Appointment {
 
     public Instant getCancelledAt() {
         return cancelledAt;
+    }
+
+    public Instant getArrivedAt() {
+        return arrivedAt;
+    }
+
+    public Instant getConsultationStartedAt() {
+        return consultationStartedAt;
+    }
+
+    public Instant getConsultationCompletedAt() {
+        return consultationCompletedAt;
     }
 }

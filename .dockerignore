@@ -1,0 +1,15 @@
+.git
+.idea
+.vscode
+.agents
+.claude
+.env
+.env.*
+.neon
+target
+logs
+*.log
+secrets
+secrets/
+*.secret
+secrets.txt

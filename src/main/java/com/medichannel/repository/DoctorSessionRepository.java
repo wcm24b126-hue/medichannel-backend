@@ -3,6 +3,7 @@ package com.medichannel.repository;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -29,6 +30,23 @@ public interface DoctorSessionRepository
     List<DoctorSession> findByDoctorIdAndStatus(
             UUID doctorId,
             SessionStatus status
+    );
+
+    // Doctor portal: all sessions belonging to the authenticated doctor.
+    List<DoctorSession>
+            findByDoctor_User_IdOrderBySessionDateDescStartTimeDesc(
+                    UUID userId
+            );
+
+    List<DoctorSession>
+            findByDoctor_User_IdAndSessionDateOrderByStartTimeAsc(
+                    UUID userId,
+                    LocalDate sessionDate
+            );
+
+    Optional<DoctorSession> findByIdAndDoctor_User_Id(
+            UUID sessionId,
+            UUID userId
     );
 
     // Publicly discoverable sessions must be open, in the future,

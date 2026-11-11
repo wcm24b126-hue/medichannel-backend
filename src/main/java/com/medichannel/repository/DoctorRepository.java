@@ -14,6 +14,17 @@ public interface DoctorRepository extends JpaRepository<Doctor, UUID> {
 
     Optional<Doctor> findByUserId(UUID userId);
 
+    @Query("""
+            SELECT d
+            FROM Doctor d
+            JOIN FETCH d.specialisation s
+            JOIN FETCH d.user u
+            WHERE u.id = :userId
+            """)
+    Optional<Doctor> findByUserIdWithSpecialisation(
+            @Param("userId") UUID userId
+    );
+
     Optional<Doctor> findByRegistrationNumber(String registrationNumber);
 
     boolean existsByRegistrationNumber(String registrationNumber);
