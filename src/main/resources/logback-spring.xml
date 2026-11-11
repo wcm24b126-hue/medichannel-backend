@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+
+    <springProperty
+        scope="context"
+        name="APP_NAME"
+        source="spring.application.name"
+        defaultValue="medichannel"/>
+
+    <property name="LOG_PATTERN"
+        value="%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] [%X{requestId:-NO-REQUEST-ID}] ${APP_NAME} - %logger{36} - %msg%n"/>
+
+    <appender name="CONSOLE"
+              class="ch.qos.logback.core.ConsoleAppender">
+
+        <encoder>
+            <pattern>${LOG_PATTERN}</pattern>
+        </encoder>
+
+    </appender>
+
+    <logger name="org.hibernate.SQL" level="OFF"/>
+    <logger name="org.hibernate.orm.jdbc.bind" level="OFF"/>
+    <logger name="org.springframework.security" level="WARN"/>
+    <logger name="org.flywaydb" level="INFO"/>
+    <logger name="com.zaxxer.hikari" level="WARN"/>
+
+    <springProfile name="dev">
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+        </root>
+    </springProfile>
+
+    <springProfile name="prod">
+        <root level="WARN">
+            <appender-ref ref="CONSOLE"/>
+        </root>
+    </springProfile>
+
+    <springProfile name="default">
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+        </root>
+    </springProfile>
+
+</configuration>

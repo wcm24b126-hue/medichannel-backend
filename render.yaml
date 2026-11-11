@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: medichannel-backend
+    runtime: docker
+    plan: free
+    region: singapore
+    branch: main
+    autoDeployTrigger: commit
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /actuator/health
+    envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: prod
+      - key: DB_URL
+        sync: false
+      - key: DB_USERNAME
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: ENCRYPTION_KEY
+        sync: false
+      - key: HMAC_SECRET
+        sync: false
+      - key: APP_FRONTEND_ORIGIN
+        sync: false
+      - key: APP_ADMIN_EMAIL
+        sync: false
+      - key: APP_ADMIN_PASSWORD
+        sync: false
