@@ -26,6 +26,12 @@ public interface NotificationRepository
             UUID userId
     );
 
+    boolean existsByUser_IdAndAppointment_IdAndType(
+            UUID userId,
+            UUID appointmentId,
+            com.medichannel.enums.NotificationType type
+    );
+
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""
             UPDATE Notification n
