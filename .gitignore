@@ -50,3 +50,9 @@ target/
 .DS_Store
 Thumbs.db
 .neon
+
+# AI agent workspaces & lockfiles
+.agents/
+.claude/
+skills-lock.json
+
