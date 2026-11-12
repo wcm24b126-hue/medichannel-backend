@@ -140,9 +140,11 @@ public class ConsultationSummaryService {
                 actorUserId
         );
 
+        // Clinical data is strictly limited to the patient who owns this
+        // appointment and the doctor assigned to the session. ADMIN and
+        // MANAGER roles must never read diagnosis, advice or prescriptions.
         boolean allowed = patientOwner
-                || accessPolicy.isAssignedDoctor(appointment, actorUserId)
-                || accessPolicy.isStaff(actorRole);
+                || accessPolicy.isAssignedDoctor(appointment, actorUserId);
 
         if (!allowed) {
             throw new ForbiddenOperationException(
