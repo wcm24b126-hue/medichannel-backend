@@ -89,6 +89,7 @@ public class DoctorService {
                 email,
                 passwordEncoder.encode(request.initialPassword())
         );
+        user.activateByAdministrator();
 
         User savedUser = userRepository.saveAndFlush(user);
 
@@ -106,7 +107,7 @@ public class DoctorService {
         Doctor savedDoctor = doctorRepository.saveAndFlush(doctor);
 
         return new DoctorCreatedResponse(
-                "Doctor account and profile created. The account is pending activation.",
+                "Doctor account and profile created. The account is active and ready for login.",
                 savedDoctor.getId(),
                 savedUser.getId(),
                 savedUser.getEmail(),
