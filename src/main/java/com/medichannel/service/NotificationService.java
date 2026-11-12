@@ -6,6 +6,7 @@ import java.util.UUID;
 
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -87,7 +88,7 @@ public class NotificationService {
     }
 
     /** Creates a one-time notification for a user/appointment/type tuple. */
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public NotificationResponse createIfAbsent(
             UUID recipientUserId,
             NotificationType type,
