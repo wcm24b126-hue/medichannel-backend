@@ -61,7 +61,7 @@ public class ConsultationSummaryController {
         );
     }
 
-    // The patient, the assigned doctor and staff can read a summary.
+    // Only the patient owner and assigned doctor can read clinical summaries.
     @GetMapping("/{appointmentId}/summary")
     public ResponseEntity<ConsultationSummaryResponse> getSummary(
             @AuthenticationPrincipal Jwt jwt,
