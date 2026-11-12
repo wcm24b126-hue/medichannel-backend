@@ -35,17 +35,20 @@ public class SessionQueueService {
     private final AppointmentRepository appointmentRepository;
     private final DoctorSessionRepository doctorSessionRepository;
     private final SimpMessagingTemplate messagingTemplate;
+    private final NotificationService notificationService;
     private final Clock clock;
 
     public SessionQueueService(
             AppointmentRepository appointmentRepository,
             DoctorSessionRepository doctorSessionRepository,
             SimpMessagingTemplate messagingTemplate,
+            NotificationService notificationService,
             Clock clock
     ) {
         this.appointmentRepository = appointmentRepository;
         this.doctorSessionRepository = doctorSessionRepository;
         this.messagingTemplate = messagingTemplate;
+        this.notificationService = notificationService;
         this.clock = clock;
     }
 
@@ -104,6 +107,7 @@ public class SessionQueueService {
                 nextNumber,
                 remaining,
                 session.getMaxAppointments(),
+                session.getDelayMinutes(),
                 session.getStatus(),
                 clock.instant()
         );
@@ -121,6 +125,7 @@ public class SessionQueueService {
                     summary
             );
             messagingTemplate.convertAndSend(CATALOGUE_TOPIC, summary);
+            notifyPatientThreeNumbersAway(summary);
         };
 
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
@@ -136,6 +141,26 @@ public class SessionQueueService {
         }
 
         publish.run();
+    }
+
+    private void notifyPatientThreeNumbersAway(SessionQueueSummary summary) {
+        if (summary.nowServing() == null
+                || summary.status() == com.medichannel.enums.SessionStatus.CANCELLED
+                || summary.status() == com.medichannel.enums.SessionStatus.COMPLETED) {
+            return;
+        }
+        appointmentRepository.findBySession_IdAndAppointmentNumber(
+                summary.sessionId(), summary.nowServing() + 3
+        ).filter(appointment ->
+                appointment.getStatus() == AppointmentStatus.BOOKED
+                        || appointment.getStatus() == AppointmentStatus.ARRIVED
+        ).ifPresent(appointment -> notificationService.createIfAbsent(
+                appointment.getPatient().getUser().getId(),
+                com.medichannel.enums.NotificationType.THREE_NUMBERS_AWAY,
+                "You are three numbers away",
+                "Your appointment is three numbers away from being called.",
+                appointment.getId()
+        ));
     }
 
     public void broadcastAppointmentStatus(
