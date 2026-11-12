@@ -2,6 +2,7 @@ package com.medichannel.dto.auth;
 
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 public record RegisterRequest(
@@ -16,6 +17,10 @@ public record RegisterRequest(
                 min = 12,
                 max = 72,
                 message = "Password must contain between 12 and 72 characters."
+        )
+        @Pattern(
+                regexp = "^(?=.*[A-Za-z])(?=.*\\d)(?=.*[^A-Za-z\\d]).*$",
+                message = "Password must include at least one letter, one number and one symbol."
         )
         String password,
 
