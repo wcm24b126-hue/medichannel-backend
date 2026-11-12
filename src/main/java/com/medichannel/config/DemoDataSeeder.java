@@ -479,6 +479,26 @@ public class DemoDataSeeder implements ApplicationRunner {
         if (start.toLocalDate().isAfter(date)
                 || end.toLocalDate().isAfter(date)
                 || start.toLocalTime().isBefore(LocalTime.of(6, 0))) {
+            // Outside bookable hours: fall back to the full day's fixed slots
+            // so the demo always has sessions for today.
+            slots.add(new TimeSlot(
+                    LocalTime.of(9, 0),
+                    LocalTime.of(12, 0),
+                    16,
+                    10
+            ));
+            slots.add(new TimeSlot(
+                    LocalTime.of(14, 0),
+                    LocalTime.of(17, 0),
+                    16,
+                    10
+            ));
+            slots.add(new TimeSlot(
+                    LocalTime.of(18, 0),
+                    LocalTime.of(21, 0),
+                    12,
+                    15
+            ));
             return slots;
         }
 

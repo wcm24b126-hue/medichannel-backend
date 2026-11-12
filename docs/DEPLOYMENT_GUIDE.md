@@ -88,6 +88,27 @@ Create a **Web Service** from the repository.
 `APP_FRONTEND_ORIGIN` must not be `*`. Empty or wildcard values fail startup by
 design.
 
+### Isolated development staging service
+
+Keep the production service and its database settings unchanged. To create a
+separate public backend for test accounts:
+
+1. In Render, create a new Blueprint from this repository and select
+   `render-staging.yaml`.
+2. Set its `DB_URL`, `DB_USERNAME`, and `DB_PASSWORD` to the `neondb` connection
+   details for the Neon `development` branch. Use the direct (non-pooled)
+   endpoint because Flyway runs at startup.
+3. Configure its own `JWT_SECRET`, `ENCRYPTION_KEY`, and `HMAC_SECRET`, plus
+   `APP_FRONTEND_ORIGIN` for the frontend allowed to call the staging service.
+   Never reuse or copy production database credentials into this service.
+4. Wait for `/actuator/health` to report `UP`. Set the staging frontend's
+   server-side `API_URL` to the new staging service origin. Do not change the
+   production Netlify site's API URL if it should continue using production.
+
+The staging blueprint intentionally contains no database credentials or demo
+passwords. It must be configured with the development branch in Render before
+deployment.
+
 ---
 
 ## 5. First administrator

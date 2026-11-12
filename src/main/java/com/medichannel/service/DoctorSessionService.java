@@ -254,7 +254,7 @@ public class DoctorSessionService {
                 now.toLocalTime(),
                 doctorId,
                 specialisationId,
-                sessionDate,
+                sessionDate == null ? null : sessionDate.toString(),
                 query == null || query.isEmpty() ? null : query,
                 consultationType
         ).stream().map(this::toResponse).toList();

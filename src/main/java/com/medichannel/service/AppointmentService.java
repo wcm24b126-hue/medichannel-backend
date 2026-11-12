@@ -568,6 +568,14 @@ public class AppointmentService {
                     Appointment started = appointmentRepository
                             .saveAndFlush(candidate);
 
+                    // The next patient's room flips from "waiting" to
+                    // "in consultation" without a page reload.
+                    sessionQueueService.broadcastAppointmentStatus(
+                            started.getId(),
+                            started.getStatus(),
+                            clock.instant()
+                    );
+
                     notificationService.create(
                             started.getPatient().getUser().getId(),
                             NotificationType.CONSULTATION_STARTED,

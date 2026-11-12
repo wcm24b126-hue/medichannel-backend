@@ -44,6 +44,7 @@ public class PaymentService {
     private final UserRepository userRepository;
     private final AppointmentAccessPolicy accessPolicy;
     private final NotificationService notificationService;
+    private final SessionQueueService sessionQueueService;
     private final Clock clock;
 
     public PaymentService(
@@ -52,6 +53,7 @@ public class PaymentService {
             UserRepository userRepository,
             AppointmentAccessPolicy accessPolicy,
             NotificationService notificationService,
+            SessionQueueService sessionQueueService,
             Clock clock
     ) {
         this.paymentRepository = paymentRepository;
@@ -59,6 +61,7 @@ public class PaymentService {
         this.userRepository = userRepository;
         this.accessPolicy = accessPolicy;
         this.notificationService = notificationService;
+        this.sessionQueueService = sessionQueueService;
         this.clock = clock;
     }
 
@@ -130,6 +133,14 @@ public class PaymentService {
             appointmentRepository.saveAndFlush(appointment);
 
             notifyParticipants(appointment, saved);
+
+            // The doctor console enables "Start" as soon as the queue
+            // shows the appointment as paid.
+            sessionQueueService.broadcast(
+                    sessionQueueService.buildSummary(
+                            appointment.getSession()
+                    )
+            );
 
             return toResponse(saved);
 

@@ -79,15 +79,19 @@ public interface DoctorSessionRepository
               AND u.emailVerified = true
               AND (:doctorId IS NULL OR d.id = :doctorId)
               AND (:specialisationId IS NULL OR sp.id = :specialisationId)
-              AND (:sessionDate IS NULL OR s.sessionDate = :sessionDate)
+              AND (
+                    :sessionDate IS NULL
+                    OR CAST(s.sessionDate AS string) = :sessionDate
+              )
               AND (
                     :q IS NULL
                     OR LOWER(CONCAT(d.firstName, ' ', d.lastName))
-                        LIKE LOWER(CONCAT('%', :q, '%'))
+                        LIKE LOWER(CONCAT('%', CAST(:q AS string), '%'))
               )
               AND (
                     :consultationType IS NULL
-                    OR s.consultationType = :consultationType
+                    OR CAST(s.consultationType AS string)
+                        = CAST(:consultationType AS string)
               )
             ORDER BY s.sessionDate ASC, s.startTime ASC
             """)
@@ -97,7 +101,7 @@ public interface DoctorSessionRepository
             @Param("currentTime") LocalTime currentTime,
             @Param("doctorId") UUID doctorId,
             @Param("specialisationId") UUID specialisationId,
-            @Param("sessionDate") LocalDate sessionDate,
+            @Param("sessionDate") String sessionDate,
             @Param("q") String q,
             @Param("consultationType") ConsultationType consultationType
     );
