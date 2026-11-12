@@ -86,6 +86,24 @@ public class NotificationService {
         return response;
     }
 
+    /** Creates a one-time notification for a user/appointment/type tuple. */
+    @Transactional
+    public NotificationResponse createIfAbsent(
+            UUID recipientUserId,
+            NotificationType type,
+            String title,
+            String message,
+            UUID appointmentId
+    ) {
+        if (appointmentId != null
+                && notificationRepository.existsByUser_IdAndAppointment_IdAndType(
+                        recipientUserId, appointmentId, type
+                )) {
+            return null;
+        }
+        return create(recipientUserId, type, title, message, appointmentId);
+    }
+
     @Transactional(readOnly = true)
     public List<NotificationResponse> getMyNotifications(UUID userId) {
         return notificationRepository
