@@ -21,6 +21,10 @@ public record CreateDoctorRequest(
         String initialPassword,
 
         @NotBlank
+        @Size(min = 12, max = 72)
+        String confirmPassword,
+
+        @NotBlank
         @Size(max = 100)
         String firstName,
 
