@@ -136,22 +136,6 @@ public class Patient {
         updatedAt = now;
     }
 
-    public void updateProfile(
-            String firstNameEncrypted,
-            String lastNameEncrypted,
-            String phoneEncrypted,
-            String nicLookupHash,
-            String dateOfBirthEncrypted,
-            String genderEncrypted
-    ) {
-        this.firstNameEncrypted = firstNameEncrypted;
-        this.lastNameEncrypted = lastNameEncrypted;
-        this.phoneEncrypted = phoneEncrypted;
-        this.nicLookupHash = nicLookupHash;
-        this.dateOfBirthEncrypted = dateOfBirthEncrypted;
-        this.genderEncrypted = genderEncrypted;
-    }
-
     @PreUpdate
     protected void onUpdate() {
         updatedAt = Instant.now();
