@@ -179,6 +179,25 @@ public class Appointment {
         this.cancelledAt = cancellationTime;
     }
 
+    /**
+     * Hospital-initiated cancellation of outstanding appointments when a
+     * complete session is cancelled. This is separate from patient BR-07
+     * cancellation and retains any existing payment record.
+     */
+    public void cancelForSession(Instant cancellationTime) {
+        if (status != AppointmentStatus.BOOKED
+                && status != AppointmentStatus.ARRIVED) {
+            throw new IllegalStateException(
+                    "Only outstanding appointments can be cancelled with a session."
+            );
+        }
+        if (cancellationTime == null) {
+            throw new IllegalArgumentException("Cancellation time is required.");
+        }
+        this.status = AppointmentStatus.CANCELLED;
+        this.cancelledAt = cancellationTime;
+    }
+
     public void markPaid(PaymentMethod method) {
         if (status == AppointmentStatus.CANCELLED) {
             throw new IllegalStateException(
