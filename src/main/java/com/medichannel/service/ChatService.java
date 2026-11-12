@@ -36,7 +36,6 @@ public class ChatService {
     private static final int MAX_MESSAGE_LENGTH = 1000;
     private static final int MAX_HISTORY_LIMIT = 500;
     private static final int DEFAULT_HISTORY_LIMIT = 200;
-    private static final int NOTIFICATION_PREVIEW_LENGTH = 120;
 
     private final ChatMessageRepository chatMessageRepository;
     private final AppointmentRepository appointmentRepository;
@@ -109,13 +108,13 @@ public class ChatService {
                 appointment,
                 sender,
                 senderRole,
-                content
+                dataProtectionService.encrypt(content)
         );
         message.setSentAt(clock.instant());
 
         ChatMessage saved = chatMessageRepository.saveAndFlush(message);
 
-        notifyRecipient(appointment, senderUserId, senderRole, content);
+        notifyRecipient(appointment, senderRole);
 
         return toResponse(saved, resolveDisplayName(senderUserId, senderRole));
     }
@@ -242,23 +241,17 @@ public class ChatService {
 
     private void notifyRecipient(
             Appointment appointment,
-            UUID senderUserId,
-            String senderRole,
-            String content
+            String senderRole
     ) {
         UUID recipientUserId = "CUSTOMER".equals(senderRole)
                 ? appointment.getSession().getDoctor().getUser().getId()
                 : appointment.getPatient().getUser().getId();
 
-        String preview = content.length() > NOTIFICATION_PREVIEW_LENGTH
-                ? content.substring(0, NOTIFICATION_PREVIEW_LENGTH) + "..."
-                : content;
-
         notificationService.create(
                 recipientUserId,
                 NotificationType.NEW_CHAT_MESSAGE,
                 "New consultation message",
-                preview,
+                "You have received a new private consultation message.",
                 appointment.getId()
         );
     }
@@ -280,6 +273,14 @@ public class ChatService {
                 .orElse("Doctor");
     }
 
+    private String decryptStoredMessage(String storedContent) {
+        if (storedContent == null || !storedContent.startsWith("v1:")) {
+            // Legacy rows remain readable; all new writes are encrypted.
+            return storedContent;
+        }
+        return dataProtectionService.decrypt(storedContent);
+    }
+
     private ChatMessageResponse toResponse(
             ChatMessage message,
             String senderName
@@ -290,7 +291,7 @@ public class ChatService {
                 message.getSenderUser().getId(),
                 message.getSenderRole(),
                 senderName,
-                message.getContent(),
+                decryptStoredMessage(message.getContent()),
                 message.getSentAt()
         );
     }
