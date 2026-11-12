@@ -67,6 +67,7 @@ public class PatientService {
         String encryptedPhone =
                 protectionService.encrypt(normalizeOptional(request.phone()));
 
+        String encryptedNic = protectionService.encrypt(normalizedNic);
         String encryptedDateOfBirth =
                 protectionService.encrypt(
                         request.dateOfBirth() == null
@@ -76,6 +77,8 @@ public class PatientService {
 
         String encryptedGender =
                 protectionService.encrypt(normalizeOptional(request.gender()));
+        String encryptedAddress =
+                protectionService.encrypt(normalizeOptional(request.address()));
 
         Patient patient = new Patient(
                 user,
@@ -83,8 +86,10 @@ public class PatientService {
                 encryptedLastName,
                 encryptedPhone,
                 nicHash,
+                encryptedNic,
                 encryptedDateOfBirth,
-                encryptedGender
+                encryptedGender,
+                encryptedAddress
         );
 
         Patient savedPatient = patientRepository.saveAndFlush(patient);
@@ -123,19 +128,26 @@ public class PatientService {
             );
         }
 
+        String encryptedNic = normalizedNic == null
+                ? patient.getNicEncrypted()
+                : protectionService.encrypt(normalizedNic);
+        String encryptedAddress = request.address() == null
+                ? patient.getAddressEncrypted()
+                : protectionService.encrypt(normalizeOptional(request.address()));
+
         patient.updateProfile(
                 protectionService.encrypt(request.firstName().trim()),
                 protectionService.encrypt(request.lastName().trim()),
                 protectionService.encrypt(normalizeOptional(request.phone())),
                 nicHash,
+                encryptedNic,
                 protectionService.encrypt(
                         request.dateOfBirth() == null
                                 ? null
                                 : request.dateOfBirth().toString()
                 ),
-                protectionService.encrypt(
-                        normalizeOptional(request.gender())
-                )
+                protectionService.encrypt(normalizeOptional(request.gender())),
+                encryptedAddress
         );
 
         return toResponse(patientRepository.saveAndFlush(patient));
@@ -202,6 +214,7 @@ public class PatientService {
         String gender = protectionService.decrypt(
                 patient.getGenderEncrypted()
         );
+        String address = protectionService.decrypt(patient.getAddressEncrypted());
 
         return new PatientProfileResponse(
                 patient.getId(),
@@ -210,6 +223,7 @@ public class PatientService {
                 phone,
                 dateOfBirth,
                 gender,
+                address,
                 patient.getCreatedAt(),
                 patient.getUpdatedAt()
         );
