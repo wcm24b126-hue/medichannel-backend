@@ -616,6 +616,16 @@ class ConsultationLifecyclePostgresIntegrationTests {
                 adminAuth
         )).isFalse();
 
+        // BR-09: the room is read-only until the consultation starts.
+        assertThatThrownBy(() -> chatService.sendMessage(
+                UUID.fromString(appointmentId),
+                fixture.patientUserId(),
+                "Too early"
+        )).isInstanceOf(ConflictException.class);
+
+        recordPayment(appointmentId, fixture.patientUserId());
+        startConsultation(appointmentId, fixture.doctorUserId());
+
         // Messages are persisted with the authenticated sender.
         ChatMessageResponse patientMessage = chatService.sendMessage(
                 UUID.fromString(appointmentId),
@@ -652,17 +662,13 @@ class ConsultationLifecyclePostgresIntegrationTests {
                 "Spoofed message"
         )).isInstanceOf(ForbiddenOperationException.class);
 
-        // Cancelled consultations stop accepting messages.
-        mockMvc.perform(
-                patch(APPOINTMENTS_URL + "/" + appointmentId + "/cancel")
-                        .with(customerJwt(fixture.patientUserId()))
-        )
-                .andExpect(status().isOk());
+        // Completed consultations stop accepting messages.
+        completeConsultation(appointmentId, fixture.doctorUserId());
 
         assertThatThrownBy(() -> chatService.sendMessage(
                 UUID.fromString(appointmentId),
                 fixture.patientUserId(),
-                "Message after cancellation"
+                "Message after completion"
         )).isInstanceOf(ConflictException.class);
     }
 

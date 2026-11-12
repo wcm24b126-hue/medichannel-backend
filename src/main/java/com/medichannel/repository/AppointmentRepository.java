@@ -13,10 +13,31 @@ import org.springframework.stereotype.Repository;
 
 import com.medichannel.entity.Appointment;
 import com.medichannel.enums.AppointmentStatus;
+import com.medichannel.enums.PaymentStatus;
 
 @Repository
 public interface AppointmentRepository
         extends JpaRepository<Appointment, UUID> {
+
+    // Queue ordering is always the database allocated number.
+    List<Appointment> findBySession_IdOrderByAppointmentNumberAsc(
+            UUID sessionId
+    );
+
+    long countBySession_Id(UUID sessionId);
+
+    Optional<Appointment>
+            findFirstBySession_IdAndStatusOrderByAppointmentNumberAsc(
+                    UUID sessionId,
+                    AppointmentStatus status
+            );
+
+    Optional<Appointment>
+            findFirstBySession_IdAndStatusAndPaymentStatusOrderByAppointmentNumberAsc(
+                    UUID sessionId,
+                    AppointmentStatus status,
+                    PaymentStatus paymentStatus
+            );
 
     // Retrieve all appointments belonging to an authenticated patient.
     List<Appointment> findAllByPatient_User_IdOrderByCreatedAtDesc(

@@ -11,6 +11,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import com.medichannel.entity.DoctorSession;
+import com.medichannel.enums.ConsultationType;
 import com.medichannel.enums.SessionStatus;
 
 public interface DoctorSessionRepository
@@ -20,6 +21,11 @@ public interface DoctorSessionRepository
             UUID doctorId,
             LocalDate date,
             SessionStatus status
+    );
+
+    List<DoctorSession> findByDoctor_IdAndSessionDate(
+            UUID doctorId,
+            LocalDate sessionDate
     );
 
     List<DoctorSession> findBySessionDateAndStatus(
@@ -74,6 +80,15 @@ public interface DoctorSessionRepository
               AND (:doctorId IS NULL OR d.id = :doctorId)
               AND (:specialisationId IS NULL OR sp.id = :specialisationId)
               AND (:sessionDate IS NULL OR s.sessionDate = :sessionDate)
+              AND (
+                    :q IS NULL
+                    OR LOWER(CONCAT(d.firstName, ' ', d.lastName))
+                        LIKE LOWER(CONCAT('%', :q, '%'))
+              )
+              AND (
+                    :consultationType IS NULL
+                    OR s.consultationType = :consultationType
+              )
             ORDER BY s.sessionDate ASC, s.startTime ASC
             """)
     List<DoctorSession> findPublicOpenSessions(
@@ -82,6 +97,8 @@ public interface DoctorSessionRepository
             @Param("currentTime") LocalTime currentTime,
             @Param("doctorId") UUID doctorId,
             @Param("specialisationId") UUID specialisationId,
-            @Param("sessionDate") LocalDate sessionDate
+            @Param("sessionDate") LocalDate sessionDate,
+            @Param("q") String q,
+            @Param("consultationType") ConsultationType consultationType
     );
 }

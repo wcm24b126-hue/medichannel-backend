@@ -4,6 +4,7 @@ import java.time.Clock;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.dao.DataIntegrityViolationException;
@@ -15,6 +16,9 @@ import com.medichannel.dto.admin.AdminAppointmentResponse;
 import com.medichannel.dto.appointment.AppointmentBookingRequest;
 import com.medichannel.dto.appointment.AppointmentResponse;
 import com.medichannel.dto.doctor.DoctorAppointmentResponse;
+import com.medichannel.dto.queue.CompleteAndAdvanceResponse;
+import com.medichannel.dto.queue.SessionQueueResponse;
+import com.medichannel.dto.queue.SessionQueueSummary;
 import com.medichannel.entity.Appointment;
 import com.medichannel.entity.DoctorSession;
 import com.medichannel.entity.Patient;
@@ -50,6 +54,7 @@ public class AppointmentService {
     private final PatientDataProtectionService dataProtectionService;
     private final NotificationService notificationService;
     private final AppointmentAccessPolicy accessPolicy;
+    private final SessionQueueService sessionQueueService;
     private final Clock clock;
 
     public AppointmentService(
@@ -60,6 +65,7 @@ public class AppointmentService {
             PatientDataProtectionService dataProtectionService,
             NotificationService notificationService,
             AppointmentAccessPolicy accessPolicy,
+            SessionQueueService sessionQueueService,
             Clock clock
     ) {
         this.appointmentRepository = appointmentRepository;
@@ -69,6 +75,7 @@ public class AppointmentService {
         this.dataProtectionService = dataProtectionService;
         this.notificationService = notificationService;
         this.accessPolicy = accessPolicy;
+        this.sessionQueueService = sessionQueueService;
         this.clock = clock;
     }
 
@@ -127,6 +134,8 @@ public class AppointmentService {
             }
 
             notifyAppointmentBooked(saved);
+
+            publishQueue(saved);
 
             return toResponse(saved);
 
@@ -227,6 +236,8 @@ public class AppointmentService {
 
         notifyAppointmentCancelled(saved);
 
+        publishQueue(saved);
+
         return toResponse(saved);
     }
 
@@ -264,6 +275,8 @@ public class AppointmentService {
                         + " has checked in.",
                 saved.getId()
         );
+
+        publishQueue(saved);
 
         return toResponse(saved);
     }
@@ -353,6 +366,8 @@ public class AppointmentService {
                 saved.getId()
         );
 
+        publishQueue(saved);
+
         return toDoctorResponse(saved);
     }
 
@@ -395,6 +410,8 @@ public class AppointmentService {
                 saved.getId()
         );
 
+        publishQueue(saved);
+
         return toDoctorResponse(saved);
     }
 
@@ -427,6 +444,8 @@ public class AppointmentService {
                 "Your consultation is complete. The doctor can now publish a summary.",
                 saved.getId()
         );
+
+        publishQueue(saved);
 
         return toDoctorResponse(saved);
     }
@@ -464,13 +483,151 @@ public class AppointmentService {
                 saved.getId()
         );
 
+        publishQueue(saved);
+
         return toDoctorResponse(saved);
+    }
+
+    /**
+     * The doctor's live queue for one session. Ordered strictly by the
+     * appointment number allocated by the database.
+     */
+    @Transactional(readOnly = true)
+    public SessionQueueResponse getDoctorSessionQueue(
+            UUID doctorUserId,
+            UUID sessionId
+    ) {
+        DoctorSession session = doctorSessionRepository
+                .findByIdAndDoctor_User_Id(sessionId, doctorUserId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Doctor session was not found."
+                ));
+
+        return buildQueueResponse(session);
+    }
+
+    /**
+     * Complete the appointment in progress and immediately start the
+     * next checked-in patient who has paid. Numbers are never reused;
+     * only the queue pointer moves.
+     */
+    @Transactional
+    public CompleteAndAdvanceResponse completeAndAdvance(
+            UUID doctorUserId,
+            UUID appointmentId
+    ) {
+        Appointment appointment = findDoctorAppointment(
+                doctorUserId,
+                appointmentId
+        );
+
+        if (appointment.getStatus() != AppointmentStatus.IN_CONSULTATION) {
+            throw new ConflictException(
+                    "Only a consultation in progress can be completed."
+            );
+        }
+
+        DoctorSession session = appointment.getSession();
+
+        appointment.complete(clock.instant());
+
+        Appointment completed = appointmentRepository.saveAndFlush(
+                appointment
+        );
+
+        notificationService.create(
+                completed.getPatient().getUser().getId(),
+                NotificationType.CONSULTATION_COMPLETED,
+                "Consultation completed",
+                "Your consultation is complete. The doctor can now publish a summary.",
+                completed.getId()
+        );
+
+        DoctorAppointmentResponse nextResponse = null;
+        boolean paymentRequired = false;
+
+        boolean sessionActive =
+                session.getStatus() == SessionStatus.OPEN
+                        || session.getStatus() == SessionStatus.IN_PROGRESS;
+
+        if (sessionActive) {
+            Optional<Appointment> waiting = appointmentRepository
+                    .findFirstBySession_IdAndStatusOrderByAppointmentNumberAsc(
+                            session.getId(),
+                            AppointmentStatus.ARRIVED
+                    );
+
+            if (waiting.isPresent()) {
+                Appointment candidate = waiting.get();
+
+                if (candidate.getPaymentStatus() != PaymentStatus.PAID) {
+                    paymentRequired = true;
+                } else {
+                    candidate.startConsultation(clock.instant());
+
+                    Appointment started = appointmentRepository
+                            .saveAndFlush(candidate);
+
+                    notificationService.create(
+                            started.getPatient().getUser().getId(),
+                            NotificationType.CONSULTATION_STARTED,
+                            "You are next",
+                            "Your consultation has started.",
+                            started.getId()
+                    );
+
+                    nextResponse = toDoctorResponse(started);
+                }
+            }
+        }
+
+        publishQueue(completed);
+
+        return new CompleteAndAdvanceResponse(
+                toDoctorResponse(completed),
+                nextResponse,
+                paymentRequired,
+                buildQueueResponse(session)
+        );
+    }
+
+    private SessionQueueResponse buildQueueResponse(DoctorSession session) {
+        List<DoctorAppointmentResponse> appointments = appointmentRepository
+                .findBySession_IdOrderByAppointmentNumberAsc(session.getId())
+                .stream()
+                .map(this::toDoctorResponse)
+                .toList();
+
+        SessionQueueSummary summary =
+                sessionQueueService.buildSummary(session);
+
+        return new SessionQueueResponse(
+                session.getId(),
+                summary.nowServing(),
+                summary.nextNumber(),
+                summary.remainingAppointments(),
+                summary.maxAppointments(),
+                summary.status(),
+                appointments
+        );
+    }
+
+    private void publishQueue(Appointment appointment) {
+        SessionQueueSummary summary = sessionQueueService.buildSummary(
+                appointment.getSession()
+        );
+
+        sessionQueueService.broadcast(summary);
+        sessionQueueService.broadcastAppointmentStatus(
+                appointment.getId(),
+                appointment.getStatus(),
+                clock.instant()
+        );
     }
 
     // =========================================================
     // Administrative oversight
     // =========================================================
-
     @Transactional(readOnly = true)
     public List<AdminAppointmentResponse> getForOversight(
             UUID sessionId,

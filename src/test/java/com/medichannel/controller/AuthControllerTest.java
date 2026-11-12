@@ -1,6 +1,7 @@
 package com.medichannel.controller;
 
 import com.medichannel.dto.auth.CurrentUserResponse;
+import com.medichannel.security.JwtService;
 import com.medichannel.service.AuthService;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -24,7 +25,10 @@ class AuthControllerTest {
                 .issuedAt(Instant.now())
                 .expiresAt(Instant.now().plusSeconds(60))
                 .build();
-        AuthController controller = new AuthController(mock(AuthService.class));
+        AuthController controller = new AuthController(
+                mock(AuthService.class),
+                mock(JwtService.class)
+        );
 
         CurrentUserResponse response = controller.currentUser(jwt).getBody();
 

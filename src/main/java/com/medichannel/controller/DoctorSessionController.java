@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.*;
 import com.medichannel.dto.session.DoctorSessionRequest;
 import com.medichannel.dto.session.DoctorSessionResponse;
 import com.medichannel.dto.session.SessionDelayRequest;
+import com.medichannel.enums.ConsultationType;
 import com.medichannel.service.DoctorSessionService;
 
 @RestController
@@ -32,13 +33,17 @@ public class DoctorSessionController {
     public ResponseEntity<List<DoctorSessionResponse>> getPublicSessions(
             @RequestParam(required = false) UUID doctorId,
             @RequestParam(required = false) UUID specialisationId,
-            @RequestParam(required = false) LocalDate date
+            @RequestParam(required = false) LocalDate date,
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) ConsultationType consultationType
     ) {
         return ResponseEntity.ok(
                 doctorSessionService.getPublicSessions(
                         doctorId,
                         specialisationId,
-                        date
+                        date,
+                        q,
+                        consultationType
                 )
         );
     }

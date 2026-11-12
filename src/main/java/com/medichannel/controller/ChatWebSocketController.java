@@ -15,6 +15,9 @@ import org.springframework.stereotype.Controller;
 import com.medichannel.dto.chat.ChatErrorResponse;
 import com.medichannel.dto.chat.ChatMessagePayload;
 import com.medichannel.dto.chat.ChatMessageResponse;
+import com.medichannel.dto.chat.ChatParticipant;
+import com.medichannel.dto.chat.TypingIndicator;
+import com.medichannel.dto.chat.TypingPayload;
 import com.medichannel.exception.ConflictException;
 import com.medichannel.exception.ForbiddenOperationException;
 import com.medichannel.exception.ResourceNotFoundException;
@@ -25,6 +28,7 @@ public class ChatWebSocketController {
 
     private static final String TOPIC_PREFIX = "/topic/appointments/";
     private static final String TOPIC_SUFFIX = "/chat";
+    private static final String TYPING_TOPIC_SUFFIX = "/typing";
     private static final String ERROR_QUEUE = "/queue/errors";
 
     private final ChatService chatService;
@@ -61,6 +65,36 @@ public class ChatWebSocketController {
         messagingTemplate.convertAndSend(
                 TOPIC_PREFIX + appointmentId + TOPIC_SUFFIX,
                 response
+        );
+    }
+
+    @MessageMapping("/appointments/{appointmentId}/typing")
+    public void sendTypingIndicator(
+            @DestinationVariable UUID appointmentId,
+            @Payload @Valid TypingPayload payload,
+            Principal principal
+    ) {
+        if (principal == null) {
+            throw new ForbiddenOperationException(
+                    "WebSocket authentication is required."
+            );
+        }
+
+        UUID senderUserId = UUID.fromString(principal.getName());
+
+        ChatParticipant participant = chatService.describeSender(
+                appointmentId,
+                senderUserId
+        );
+
+        messagingTemplate.convertAndSend(
+                TOPIC_PREFIX + appointmentId + TYPING_TOPIC_SUFFIX,
+                new TypingIndicator(
+                        appointmentId,
+                        participant.role(),
+                        participant.name(),
+                        Boolean.TRUE.equals(payload.typing())
+                )
         );
     }
 

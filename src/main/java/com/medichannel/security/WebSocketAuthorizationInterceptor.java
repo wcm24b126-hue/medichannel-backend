@@ -10,26 +10,46 @@ import org.springframework.messaging.MessageChannel;
 import org.springframework.messaging.MessageDeliveryException;
 import org.springframework.messaging.simp.stomp.StompCommand;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
-import org.springframework.messaging.support.ChannelInterceptor;
 import org.springframework.messaging.support.MessageHeaderAccessor;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Component;
+import org.springframework.messaging.support.ChannelInterceptor;
 
 import com.medichannel.service.ConsultationAccessService;
 
+/**
+ * Denies every STOMP destination by default and only permits the
+ * destinations the application actually uses.
+ */
 @Component
 public class WebSocketAuthorizationInterceptor
         implements ChannelInterceptor {
 
-    private static final Pattern CHAT_SUBSCRIPTION =
-            Pattern.compile(
-                    "^/topic/appointments/([0-9a-fA-F-]{36})/chat$"
-            );
+    private static final String UUID_PART = "([0-9a-fA-F-]{36})";
 
-    private static final Pattern CHAT_SEND =
-            Pattern.compile(
-                    "^/app/appointments/([0-9a-fA-F-]{36})/chat$"
-            );
+    private static final Pattern CHAT_SUBSCRIPTION = Pattern.compile(
+            "^/topic/appointments/" + UUID_PART + "/chat$"
+    );
+
+    private static final Pattern CHAT_SEND = Pattern.compile(
+            "^/app/appointments/" + UUID_PART + "/chat$"
+    );
+
+    private static final Pattern TYPING_SUBSCRIPTION = Pattern.compile(
+            "^/topic/appointments/" + UUID_PART + "/typing$"
+    );
+
+    private static final Pattern TYPING_SEND = Pattern.compile(
+            "^/app/appointments/" + UUID_PART + "/typing$"
+    );
+
+    private static final Pattern STATUS_SUBSCRIPTION = Pattern.compile(
+            "^/topic/appointments/" + UUID_PART + "/status$"
+    );
+
+    private static final Pattern SESSION_QUEUE_SUBSCRIPTION = Pattern.compile(
+            "^/topic/sessions/" + UUID_PART + "/queue$"
+    );
 
     // Private per-user queues. Spring resolves /user/... to the
     // authenticated session, so one user can never read another
@@ -38,6 +58,10 @@ public class WebSocketAuthorizationInterceptor
             "/user/queue/notifications",
             "/user/queue/errors"
     );
+
+    // Non-identifying session capacity updates.
+    private static final Set<String> ALLOWED_AUTHENTICATED_SUBSCRIPTIONS =
+            Set.of("/topic/sessions");
 
     private final ConsultationAccessService accessService;
 
@@ -81,24 +105,33 @@ public class WebSocketAuthorizationInterceptor
             );
         }
 
-        if (command == StompCommand.SUBSCRIBE
-                && ALLOWED_USER_SUBSCRIPTIONS.contains(destination)) {
-            if (accessor.getUser() == null) {
-                throw new MessageDeliveryException(
-                        message,
-                        "WebSocket authentication is required."
-                );
+        if (command == StompCommand.SUBSCRIBE) {
+            if (ALLOWED_USER_SUBSCRIPTIONS.contains(destination)) {
+                requireAuthenticated(accessor, message);
+                return message;
             }
 
-            return message;
+            if (ALLOWED_AUTHENTICATED_SUBSCRIPTIONS.contains(destination)
+                    || SESSION_QUEUE_SUBSCRIPTION.matcher(destination)
+                            .matches()) {
+                requireAuthenticated(accessor, message);
+                return message;
+            }
         }
 
         Pattern expectedPattern;
 
         if (command == StompCommand.SUBSCRIBE) {
-            expectedPattern = CHAT_SUBSCRIPTION;
+            expectedPattern = matchSubscriptionPattern(destination);
         } else {
-            expectedPattern = CHAT_SEND;
+            expectedPattern = matchSendPattern(destination);
+        }
+
+        if (expectedPattern == null) {
+            throw new MessageDeliveryException(
+                    message,
+                    "Access to this WebSocket destination is not permitted."
+            );
         }
 
         Matcher matcher = expectedPattern.matcher(destination);
@@ -121,7 +154,8 @@ public class WebSocketAuthorizationInterceptor
             );
         }
 
-        Authentication authentication = accessor.getUser() instanceof Authentication auth
+        Authentication authentication = accessor.getUser()
+                instanceof Authentication auth
                 ? auth
                 : null;
 
@@ -133,5 +167,40 @@ public class WebSocketAuthorizationInterceptor
         }
 
         return message;
+    }
+
+    private Pattern matchSubscriptionPattern(String destination) {
+        if (CHAT_SUBSCRIPTION.matcher(destination).matches()) {
+            return CHAT_SUBSCRIPTION;
+        }
+        if (TYPING_SUBSCRIPTION.matcher(destination).matches()) {
+            return TYPING_SUBSCRIPTION;
+        }
+        if (STATUS_SUBSCRIPTION.matcher(destination).matches()) {
+            return STATUS_SUBSCRIPTION;
+        }
+        return null;
+    }
+
+    private Pattern matchSendPattern(String destination) {
+        if (CHAT_SEND.matcher(destination).matches()) {
+            return CHAT_SEND;
+        }
+        if (TYPING_SEND.matcher(destination).matches()) {
+            return TYPING_SEND;
+        }
+        return null;
+    }
+
+    private void requireAuthenticated(
+            StompHeaderAccessor accessor,
+            Message<?> message
+    ) {
+        if (accessor.getUser() == null) {
+            throw new MessageDeliveryException(
+                    message,
+                    "WebSocket authentication is required."
+            );
+        }
     }
 }

@@ -3,6 +3,7 @@ package com.medichannel.security;
 import java.util.List;
 import java.util.UUID;
 
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
 import org.springframework.messaging.MessageDeliveryException;
@@ -28,7 +29,7 @@ public class WebSocketJwtInterceptor implements ChannelInterceptor {
     private final UserRepository userRepository;
 
     public WebSocketJwtInterceptor(
-            JwtDecoder jwtDecoder,
+            @Qualifier("webSocketJwtDecoder") JwtDecoder jwtDecoder,
             UserRepository userRepository
     ) {
         this.jwtDecoder = jwtDecoder;

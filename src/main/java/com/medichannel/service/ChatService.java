@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.medichannel.dto.chat.ChatMessageResponse;
+import com.medichannel.dto.chat.ChatParticipant;
 import com.medichannel.entity.Appointment;
 import com.medichannel.entity.ChatMessage;
 import com.medichannel.entity.User;
@@ -32,7 +33,7 @@ import com.medichannel.security.PatientDataProtectionService;
 @Service
 public class ChatService {
 
-    private static final int MAX_MESSAGE_LENGTH = 2000;
+    private static final int MAX_MESSAGE_LENGTH = 1000;
     private static final int MAX_HISTORY_LIMIT = 500;
     private static final int DEFAULT_HISTORY_LIMIT = 200;
     private static final int NOTIFICATION_PREVIEW_LENGTH = 120;
@@ -89,6 +90,14 @@ public class ChatService {
             );
         }
 
+        // BR-09: the conversation becomes read-only when it ends.
+        if (appointment.getStatus() != AppointmentStatus.IN_CONSULTATION) {
+            throw new ConflictException(
+                    "This consultation is read-only. Messages can only be "
+                            + "sent while the consultation is in progress."
+            );
+        }
+
         String content = normalizeContent(rawContent);
 
         User sender = userRepository.findById(senderUserId)
@@ -112,12 +121,32 @@ public class ChatService {
     }
 
     @Transactional(readOnly = true)
+    public ChatParticipant describeSender(
+            UUID appointmentId,
+            UUID senderUserId
+    ) {
+        Appointment appointment = appointmentRepository
+                .findById(appointmentId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Appointment was not found."
+                ));
+
+        accessPolicy.requireChatParticipant(appointment, senderUserId);
+
+        String role = resolveSenderRole(appointment, senderUserId);
+
+        return new ChatParticipant(
+                role,
+                resolveDisplayName(senderUserId, role)
+        );
+    }
+
+    @Transactional(readOnly = true)
     public List<ChatMessageResponse> getHistory(
             UUID appointmentId,
             UUID userId,
             Integer limit
-    ) {
-        Appointment appointment = appointmentRepository
+    ) {        Appointment appointment = appointmentRepository
                 .findById(appointmentId)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Appointment was not found."

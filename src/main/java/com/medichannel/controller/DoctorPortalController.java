@@ -11,6 +11,8 @@ import org.springframework.web.bind.annotation.*;
 
 import com.medichannel.dto.doctor.DoctorAppointmentResponse;
 import com.medichannel.dto.doctor.DoctorResponse;
+import com.medichannel.dto.queue.CompleteAndAdvanceResponse;
+import com.medichannel.dto.queue.SessionQueueResponse;
 import com.medichannel.dto.session.DoctorSessionResponse;
 import com.medichannel.enums.AppointmentStatus;
 import com.medichannel.service.AppointmentService;
@@ -131,6 +133,32 @@ public class DoctorPortalController {
     ) {
         return ResponseEntity.ok(
                 sessionService.getDoctorSessions(userId(jwt), date)
+        );
+    }
+
+    @GetMapping("/sessions/{sessionId}/queue")
+    public ResponseEntity<SessionQueueResponse> getSessionQueue(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID sessionId
+    ) {
+        return ResponseEntity.ok(
+                appointmentService.getDoctorSessionQueue(
+                        userId(jwt),
+                        sessionId
+                )
+        );
+    }
+
+    @PatchMapping("/appointments/{appointmentId}/complete-and-advance")
+    public ResponseEntity<CompleteAndAdvanceResponse> completeAndAdvance(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID appointmentId
+    ) {
+        return ResponseEntity.ok(
+                appointmentService.completeAndAdvance(
+                        userId(jwt),
+                        appointmentId
+                )
         );
     }
 

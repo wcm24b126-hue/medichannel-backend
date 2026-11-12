@@ -15,6 +15,7 @@ import com.nimbusds.jose.jwk.source.ImmutableSecret;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.security.config.Customizer;
@@ -24,6 +25,11 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
+import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
+import org.springframework.security.oauth2.core.OAuth2Error;
+import org.springframework.security.oauth2.core.OAuth2TokenValidator;
+import org.springframework.security.oauth2.core.OAuth2TokenValidatorResult;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.JwtValidators;
@@ -240,7 +246,8 @@ public class SecurityConfig {
                         // Public session discovery.
                         .requestMatchers(
                                 HttpMethod.GET,
-                                "/api/v1/sessions"
+                                "/api/v1/sessions",
+                                "/api/v1/sessions/*/queue"
                         ).permitAll()
 
                         // Doctor session creation: Admin or Manager only.
@@ -339,22 +346,84 @@ public class SecurityConfig {
         return new BCryptPasswordEncoder(12);
     }
 
+    /**
+     * Decoder used by the REST resource server. WebSocket tickets are
+     * rejected here so a ticket can never be replayed against the API.
+     */
     @Bean
+    @Primary
     public JwtDecoder jwtDecoder(
             @Value("${JWT_SECRET}") String encodedSecret
     ) {
-        SecretKey secretKey = createSigningKey(encodedSecret);
+        NimbusJwtDecoder decoder = buildDecoder(encodedSecret);
 
-        NimbusJwtDecoder decoder = NimbusJwtDecoder
-                .withSecretKey(secretKey)
-                .macAlgorithm(MacAlgorithm.HS256)
-                .build();
+        OAuth2TokenValidator<Jwt> rejectWebSocketTickets =
+                token -> JwtService.WS_SCOPE_VALUE.equals(
+                        token.getClaimAsString(JwtService.WS_SCOPE_CLAIM)
+                )
+                        ? OAuth2TokenValidatorResult.failure(
+                                new OAuth2Error(
+                                        "invalid_token",
+                                        "WebSocket tickets cannot be used "
+                                                + "as access tokens.",
+                                        null
+                                )
+                        )
+                        : OAuth2TokenValidatorResult.success();
 
         decoder.setJwtValidator(
-                JwtValidators.createDefaultWithIssuer("medichannel-api")
+                new DelegatingOAuth2TokenValidator<>(
+                        JwtValidators.createDefaultWithIssuer(
+                                "medichannel-api"
+                        ),
+                        rejectWebSocketTickets
+                )
         );
 
         return decoder;
+    }
+
+    /**
+     * Decoder used only by the STOMP handshake interceptor.
+     */
+    @Bean
+    public JwtDecoder webSocketJwtDecoder(
+            @Value("${JWT_SECRET}") String encodedSecret
+    ) {
+        NimbusJwtDecoder decoder = buildDecoder(encodedSecret);
+
+        OAuth2TokenValidator<Jwt> requireWebSocketScope =
+                token -> JwtService.WS_SCOPE_VALUE.equals(
+                        token.getClaimAsString(JwtService.WS_SCOPE_CLAIM)
+                )
+                        ? OAuth2TokenValidatorResult.success()
+                        : OAuth2TokenValidatorResult.failure(
+                                new OAuth2Error(
+                                        "invalid_token",
+                                        "A WebSocket ticket is required.",
+                                        null
+                                )
+                        );
+
+        decoder.setJwtValidator(
+                new DelegatingOAuth2TokenValidator<>(
+                        JwtValidators.createDefaultWithIssuer(
+                                "medichannel-api"
+                        ),
+                        requireWebSocketScope
+                )
+        );
+
+        return decoder;
+    }
+
+    private NimbusJwtDecoder buildDecoder(String encodedSecret) {
+        SecretKey secretKey = createSigningKey(encodedSecret);
+
+        return NimbusJwtDecoder
+                .withSecretKey(secretKey)
+                .macAlgorithm(MacAlgorithm.HS256)
+                .build();
     }
 
     @Bean

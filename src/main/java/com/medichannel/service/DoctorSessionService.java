@@ -8,6 +8,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 
 import org.springframework.dao.DataIntegrityViolationException;
@@ -33,17 +34,20 @@ public class DoctorSessionService {
     private final DoctorSessionRepository doctorSessionRepository;
     private final DoctorRepository doctorRepository;
     private final RoomRepository roomRepository;
+    private final SessionQueueService sessionQueueService;
     private final Clock clock;
 
     public DoctorSessionService(
             DoctorSessionRepository doctorSessionRepository,
             DoctorRepository doctorRepository,
             RoomRepository roomRepository,
+            SessionQueueService sessionQueueService,
             Clock clock
     ) {
         this.doctorSessionRepository = doctorSessionRepository;
         this.doctorRepository = doctorRepository;
         this.roomRepository = roomRepository;
+        this.sessionQueueService = sessionQueueService;
         this.clock = clock;
     }
 
@@ -170,6 +174,7 @@ public class DoctorSessionService {
     public DoctorSessionResponse openSession(UUID sessionId) {
         DoctorSession session = findSession(sessionId);
         applyTransition(() -> session.open());
+        publishQueue(session);
         return toResponse(session);
     }
 
@@ -177,6 +182,7 @@ public class DoctorSessionService {
     public DoctorSessionResponse startSession(UUID sessionId) {
         DoctorSession session = findSession(sessionId);
         applyTransition(() -> session.start());
+        publishQueue(session);
         return toResponse(session);
     }
 
@@ -184,6 +190,7 @@ public class DoctorSessionService {
     public DoctorSessionResponse completeSession(UUID sessionId) {
         DoctorSession session = findSession(sessionId);
         applyTransition(() -> session.complete());
+        publishQueue(session);
         return toResponse(session);
     }
 
@@ -191,6 +198,7 @@ public class DoctorSessionService {
     public DoctorSessionResponse cancelSession(UUID sessionId) {
         DoctorSession session = findSession(sessionId);
         applyTransition(() -> session.cancel());
+        publishQueue(session);
         return toResponse(session);
     }
 
@@ -201,6 +209,7 @@ public class DoctorSessionService {
     ) {
         DoctorSession session = findSession(sessionId);
         session.updateDelay(delayMinutes);
+        publishQueue(session);
         return toResponse(session);
     }
 
@@ -229,9 +238,15 @@ public class DoctorSessionService {
     public List<DoctorSessionResponse> getPublicSessions(
             UUID doctorId,
             UUID specialisationId,
-            LocalDate sessionDate
+            LocalDate sessionDate,
+            String doctorName,
+            ConsultationType consultationType
     ) {
         LocalDateTime now = LocalDateTime.now(clock);
+
+        String query = doctorName == null
+                ? null
+                : doctorName.trim().toLowerCase(Locale.ROOT);
 
         return doctorSessionRepository.findPublicOpenSessions(
                 SessionStatus.OPEN,
@@ -239,7 +254,9 @@ public class DoctorSessionService {
                 now.toLocalTime(),
                 doctorId,
                 specialisationId,
-                sessionDate
+                sessionDate,
+                query == null || query.isEmpty() ? null : query,
+                consultationType
         ).stream().map(this::toResponse).toList();
     }
 
@@ -261,6 +278,12 @@ public class DoctorSessionService {
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Doctor session was not found."
                 ));
+    }
+
+    private void publishQueue(DoctorSession session) {
+        sessionQueueService.broadcast(
+                sessionQueueService.buildSummary(session)
+        );
     }
 
     private void applyTransition(Runnable transition) {
