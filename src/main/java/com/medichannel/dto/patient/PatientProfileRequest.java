@@ -17,10 +17,10 @@ public record PatientProfileRequest(
         @Size(max = 100)
         String lastName,
 
-        @Pattern(regexp = "^07\\d{8}$", message = "Phone must be in the format 07XXXXXXXX.")
+        @Pattern(regexp = "^$|^07\\d{8}$", message = "Phone must be in the format 07XXXXXXXX.")
         String phone,
 
-        @Pattern(regexp = "^(?:\\d{9}[VvXx]|\\d{12})$", message = "Enter a valid Sri Lankan NIC number.")
+        @Pattern(regexp = "^$|^(?:\\d{9}[VvXx]|\\d{12})$", message = "Enter a valid Sri Lankan NIC number.")
         String nic,
 
         @Past
