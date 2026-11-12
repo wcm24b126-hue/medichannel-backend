@@ -26,6 +26,11 @@ public interface AppointmentRepository
 
     long countBySession_Id(UUID sessionId);
 
+    Optional<Appointment> findBySession_IdAndAppointmentNumber(
+            UUID sessionId,
+            Integer appointmentNumber
+    );
+
     Optional<Appointment>
             findFirstBySession_IdAndStatusOrderByAppointmentNumberAsc(
                     UUID sessionId,
