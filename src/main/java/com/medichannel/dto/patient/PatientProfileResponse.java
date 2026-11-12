@@ -11,6 +11,7 @@ public record PatientProfileResponse(
         String phone,
         LocalDate dateOfBirth,
         String gender,
+        String address,
         Instant createdAt,
         Instant updatedAt
 ) {
