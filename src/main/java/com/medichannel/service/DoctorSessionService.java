@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.sql.SQLException;
 import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -17,13 +18,17 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.medichannel.dto.session.DoctorSessionRequest;
 import com.medichannel.dto.session.DoctorSessionResponse;
+import com.medichannel.entity.Appointment;
 import com.medichannel.entity.Doctor;
 import com.medichannel.entity.DoctorSession;
 import com.medichannel.entity.Room;
+import com.medichannel.enums.AppointmentStatus;
 import com.medichannel.enums.ConsultationType;
+import com.medichannel.enums.NotificationType;
 import com.medichannel.enums.SessionStatus;
 import com.medichannel.exception.ConflictException;
 import com.medichannel.exception.ResourceNotFoundException;
+import com.medichannel.repository.AppointmentRepository;
 import com.medichannel.repository.DoctorRepository;
 import com.medichannel.repository.DoctorSessionRepository;
 import com.medichannel.repository.RoomRepository;
@@ -32,6 +37,8 @@ import com.medichannel.repository.RoomRepository;
 public class DoctorSessionService {
 
     private final DoctorSessionRepository doctorSessionRepository;
+    private final AppointmentRepository appointmentRepository;
+    private final NotificationService notificationService;
     private final DoctorRepository doctorRepository;
     private final RoomRepository roomRepository;
     private final SessionQueueService sessionQueueService;
@@ -39,12 +46,16 @@ public class DoctorSessionService {
 
     public DoctorSessionService(
             DoctorSessionRepository doctorSessionRepository,
+            AppointmentRepository appointmentRepository,
+            NotificationService notificationService,
             DoctorRepository doctorRepository,
             RoomRepository roomRepository,
             SessionQueueService sessionQueueService,
             Clock clock
     ) {
         this.doctorSessionRepository = doctorSessionRepository;
+        this.appointmentRepository = appointmentRepository;
+        this.notificationService = notificationService;
         this.doctorRepository = doctorRepository;
         this.roomRepository = roomRepository;
         this.sessionQueueService = sessionQueueService;
@@ -197,7 +208,36 @@ public class DoctorSessionService {
     @Transactional
     public DoctorSessionResponse cancelSession(UUID sessionId) {
         DoctorSession session = findSession(sessionId);
-        applyTransition(() -> session.cancel());
+        List<Appointment> appointments = appointmentRepository
+                .findBySession_IdOrderByAppointmentNumberAsc(sessionId);
+
+        if (appointments.stream().anyMatch(appointment ->
+                appointment.getStatus() == AppointmentStatus.IN_CONSULTATION)) {
+            throw new ConflictException(
+                    "A session cannot be cancelled while a consultation is in progress."
+            );
+        }
+
+        applyTransition(session::cancel);
+        Instant cancelledAt = clock.instant();
+        for (Appointment appointment : appointments) {
+            if (appointment.getStatus() != AppointmentStatus.BOOKED
+                    && appointment.getStatus() != AppointmentStatus.ARRIVED) {
+                continue;
+            }
+            appointment.cancelForSession(cancelledAt);
+            appointmentRepository.save(appointment);
+            notificationService.create(
+                    appointment.getPatient().getUser().getId(),
+                    NotificationType.SESSION_CANCELLED,
+                    "Your session has been cancelled",
+                    "The hospital cancelled this consultation session. Please choose another session.",
+                    appointment.getId()
+            );
+            sessionQueueService.broadcastAppointmentStatus(
+                    appointment.getId(), AppointmentStatus.CANCELLED, cancelledAt
+            );
+        }
         publishQueue(session);
         return toResponse(session);
     }
@@ -208,7 +248,27 @@ public class DoctorSessionService {
             int delayMinutes
     ) {
         DoctorSession session = findSession(sessionId);
+        int previousDelay = session.getDelayMinutes();
         session.updateDelay(delayMinutes);
+        if (previousDelay != delayMinutes) {
+            List<Appointment> affectedAppointments = appointmentRepository
+                    .findBySession_IdOrderByAppointmentNumberAsc(sessionId);
+            for (Appointment appointment : affectedAppointments) {
+                if (appointment.getStatus() != AppointmentStatus.BOOKED
+                        && appointment.getStatus() != AppointmentStatus.ARRIVED
+                        && appointment.getStatus() != AppointmentStatus.IN_CONSULTATION) {
+                    continue;
+                }
+                notificationService.create(
+                        appointment.getPatient().getUser().getId(),
+                        NotificationType.SESSION_DELAYED,
+                        "Your consultation session has been delayed",
+                        "The session delay is now " + delayMinutes
+                                + " minutes. Estimated consultation times have been updated.",
+                        appointment.getId()
+                );
+            }
+        }
         publishQueue(session);
         return toResponse(session);
     }
