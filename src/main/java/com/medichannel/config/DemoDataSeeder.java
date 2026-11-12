@@ -310,6 +310,7 @@ public class DemoDataSeeder implements ApplicationRunner {
                 doctorService.createDoctor(new CreateDoctorRequest(
                         email,
                         demoPassword,
+                        demoPassword,
                         firstName,
                         lastName,
                         registrationNumber,
