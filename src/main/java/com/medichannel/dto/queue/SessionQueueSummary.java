@@ -19,6 +19,7 @@ public record SessionQueueSummary(
 
         int remainingAppointments,
         int maxAppointments,
+        int delayMinutes,
 
         SessionStatus status,
 
