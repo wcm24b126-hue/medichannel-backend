@@ -62,7 +62,7 @@ public class DoctorService {
         String registrationNumber =
                 normalizeRegistrationNumber(request.registrationNumber());
 
-        validatePassword(request.initialPassword());
+        validatePassword(request.initialPassword(), request.confirmPassword());
 
         if (userRepository.existsByEmail(email)) {
             throw new ConflictException(
@@ -248,10 +248,17 @@ public class DoctorService {
         return value.trim();
     }
 
-    private void validatePassword(String password) {
-        if (password == null || password.isBlank()) {
+    private void validatePassword(String password, String confirmPassword) {
+        if (password == null || password.isBlank()
+                || confirmPassword == null || confirmPassword.isBlank()) {
             throw new IllegalArgumentException(
-                    "Initial password is required."
+                    "Password and password confirmation are required."
+            );
+        }
+
+        if (!password.equals(confirmPassword)) {
+            throw new IllegalArgumentException(
+                    "Password and confirmation do not match."
             );
         }
 
@@ -259,7 +266,7 @@ public class DoctorService {
 
         if (password.length() < 12 || passwordBytes > MAX_BCRYPT_PASSWORD_BYTES) {
             throw new IllegalArgumentException(
-                    "Initial password must contain at least 12 characters and must not exceed 72 UTF-8 bytes."
+                    "Password must contain at least 12 characters and must not exceed 72 UTF-8 bytes."
             );
         }
     }
