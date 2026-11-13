@@ -83,6 +83,7 @@ public class DoctorSessionService {
                 request.minutesPerPatient(),
                 request.feeLkr()
         );
+        session.open();
 
         try {
             DoctorSession savedSession =
