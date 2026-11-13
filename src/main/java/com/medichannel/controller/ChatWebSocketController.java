@@ -21,7 +21,9 @@ import com.medichannel.dto.chat.TypingPayload;
 import com.medichannel.exception.ConflictException;
 import com.medichannel.exception.ForbiddenOperationException;
 import com.medichannel.exception.ResourceNotFoundException;
+import com.medichannel.exception.TooManyRequestsException;
 import com.medichannel.service.ChatService;
+import com.medichannel.service.RateLimitingService;
 
 @Controller
 public class ChatWebSocketController {
@@ -33,13 +35,16 @@ public class ChatWebSocketController {
 
     private final ChatService chatService;
     private final SimpMessagingTemplate messagingTemplate;
+    private final RateLimitingService rateLimitingService;
 
     public ChatWebSocketController(
             ChatService chatService,
-            SimpMessagingTemplate messagingTemplate
+            SimpMessagingTemplate messagingTemplate,
+            RateLimitingService rateLimitingService
     ) {
         this.chatService = chatService;
         this.messagingTemplate = messagingTemplate;
+        this.rateLimitingService = rateLimitingService;
     }
 
     @MessageMapping("/appointments/{appointmentId}/chat")
@@ -55,6 +60,9 @@ public class ChatWebSocketController {
         }
 
         UUID senderUserId = UUID.fromString(principal.getName());
+
+        // Enforce per-account chat rate limiting (30 messages per minute)
+        rateLimitingService.checkRateLimit("ws:chat:" + senderUserId, 30, "chat messages");
 
         ChatMessageResponse response = chatService.sendMessage(
                 appointmentId,
@@ -81,6 +89,11 @@ public class ChatWebSocketController {
         }
 
         UUID senderUserId = UUID.fromString(principal.getName());
+
+        // Enforce typing rate limiting (20 events per minute) to prevent event flooding
+        if (!rateLimitingService.tryAcquire("ws:typing:" + senderUserId, 20)) {
+            return;
+        }
 
         ChatParticipant participant = chatService.describeSender(
                 appointmentId,
@@ -119,6 +132,9 @@ public class ChatWebSocketController {
             message = exception.getMessage();
         } else if (exception instanceof IllegalArgumentException) {
             code = "INVALID_MESSAGE";
+            message = exception.getMessage();
+        } else if (exception instanceof TooManyRequestsException) {
+            code = "RATE_LIMITED";
             message = exception.getMessage();
         }
 

@@ -79,4 +79,15 @@ public class AuthController {
                 jwtService.getWebSocketTicketLifetimeSeconds()
         ));
     }
+
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout(
+            @AuthenticationPrincipal Jwt jwt
+    ) {
+        if (jwt != null && jwt.getSubject() != null) {
+            UUID userId = UUID.fromString(jwt.getSubject());
+            authService.logout(userId);
+        }
+        return ResponseEntity.noContent().build();
+    }
 }

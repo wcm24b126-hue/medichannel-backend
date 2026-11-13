@@ -77,6 +77,26 @@ public class GlobalExceptionHandler {
         );
     }
 
+    @ExceptionHandler(TooManyRequestsException.class)
+    public ResponseEntity<ApiErrorResponse> handleTooManyRequests(
+            TooManyRequestsException exception,
+            HttpServletRequest request
+    ) {
+        String referenceId = getReferenceId(request);
+        ApiErrorResponse body = new ApiErrorResponse(
+                false,
+                "TOO_MANY_REQUESTS",
+                exception.getMessage(),
+                referenceId,
+                Instant.now()
+        );
+
+        return ResponseEntity
+                .status(HttpStatus.TOO_MANY_REQUESTS)
+                .header("Retry-After", String.valueOf(exception.getRetryAfterSeconds()))
+                .body(body);
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiErrorResponse> handleValidationException(
             MethodArgumentNotValidException exception,

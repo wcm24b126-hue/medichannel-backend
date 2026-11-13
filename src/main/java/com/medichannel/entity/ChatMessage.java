@@ -92,6 +92,13 @@ public class ChatMessage {
         this.sentAt = sentAt;
     }
 
+    public void setContent(String content) {
+        if (content == null || content.isBlank()) {
+            throw new IllegalArgumentException("Chat content cannot be empty.");
+        }
+        this.content = content;
+    }
+
     public UUID getId() {
         return id;
     }

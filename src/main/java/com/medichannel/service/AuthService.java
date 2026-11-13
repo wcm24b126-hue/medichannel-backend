@@ -3,6 +3,7 @@ package com.medichannel.service;
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -179,7 +180,8 @@ public class AuthService {
         String accessToken = jwtService.generateAccessToken(
                 authenticatedUser.getId(),
                 authenticatedUser.getEmail(),
-                roleName
+                roleName,
+                authenticatedUser.getTokenVersion()
         );
 
         return new LoginResponse(
@@ -190,5 +192,13 @@ public class AuthService {
                 authenticatedUser.getEmail(),
                 roleName
         );
+    }
+
+    @Transactional
+    public void logout(UUID userId) {
+        userRepository.findById(userId).ifPresent(user -> {
+            user.incrementTokenVersion();
+            userRepository.saveAndFlush(user);
+        });
     }
 }

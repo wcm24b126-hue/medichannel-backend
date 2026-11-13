@@ -45,6 +45,15 @@ public class JwtService {
             String email,
             String role
     ) {
+        return generateAccessToken(userId, email, role, 1);
+    }
+
+    public String generateAccessToken(
+            UUID userId,
+            String email,
+            String role,
+            int tokenVersion
+    ) {
 
         Instant now = Instant.now();
 
@@ -58,6 +67,7 @@ public class JwtService {
                 .subject(userId.toString())
                 .claim("email", email)
                 .claim("role", role)
+                .claim("ver", tokenVersion)
                 .build();
 
         return encode(claims);

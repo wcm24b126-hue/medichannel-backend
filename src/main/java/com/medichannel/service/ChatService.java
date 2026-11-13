@@ -36,7 +36,8 @@ public class ChatService {
     private static final int MAX_MESSAGE_LENGTH = 1000;
     private static final int MAX_HISTORY_LIMIT = 500;
     private static final int DEFAULT_HISTORY_LIMIT = 200;
-    private static final int NOTIFICATION_PREVIEW_LENGTH = 120;
+    private static final String GENERIC_CHAT_NOTIFICATION_TEXT =
+            "You have a new consultation message. Open MediChannel to view it.";
 
     private final ChatMessageRepository chatMessageRepository;
     private final AppointmentRepository appointmentRepository;
@@ -252,15 +253,12 @@ public class ChatService {
                 ? appointment.getSession().getDoctor().getUser().getId()
                 : appointment.getPatient().getUser().getId();
 
-        String preview = content.length() > NOTIFICATION_PREVIEW_LENGTH
-                ? content.substring(0, NOTIFICATION_PREVIEW_LENGTH) + "..."
-                : content;
-
+        // Section 5 Medical Privacy: Never copy consultation chat content into notifications
         notificationService.create(
                 recipientUserId,
                 NotificationType.NEW_CHAT_MESSAGE,
                 "New consultation message",
-                preview,
+                GENERIC_CHAT_NOTIFICATION_TEXT,
                 appointment.getId()
         );
     }

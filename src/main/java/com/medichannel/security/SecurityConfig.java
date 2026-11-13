@@ -38,11 +38,13 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtGra
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import com.medichannel.exception.ApiErrorResponse;
+import com.medichannel.repository.UserRepository;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -61,6 +63,23 @@ public class SecurityConfig {
         return http
                 .cors(Customizer.withDefaults())
                 .csrf(csrf -> csrf.disable())
+                .headers(headers -> headers
+                        .frameOptions(frame -> frame.deny())
+                        .contentTypeOptions(Customizer.withDefaults())
+                        .httpStrictTransportSecurity(hsts -> hsts
+                                .includeSubDomains(true)
+                                .maxAgeInSeconds(31536000)
+                        )
+                        .contentSecurityPolicy(csp -> csp
+                                .policyDirectives("default-src 'self'; frame-ancestors 'none';")
+                        )
+                        .referrerPolicy(referrer -> referrer
+                                .policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN)
+                        )
+                        .permissionsPolicy(permissions -> permissions
+                                .policy("geolocation=(), microphone=(), camera=()")
+                        )
+                )
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
@@ -370,7 +389,8 @@ public class SecurityConfig {
     @Bean
     @Primary
     public JwtDecoder jwtDecoder(
-            @Value("${JWT_SECRET}") String encodedSecret
+            @Value("${JWT_SECRET}") String encodedSecret,
+            UserRepository userRepository
     ) {
         NimbusJwtDecoder decoder = buildDecoder(encodedSecret);
 
@@ -388,12 +408,36 @@ public class SecurityConfig {
                         )
                         : OAuth2TokenValidatorResult.success();
 
+        OAuth2TokenValidator<Jwt> validateTokenVersion = token -> {
+            Object verObj = token.getClaim("ver");
+            if (verObj instanceof Number verNum) {
+                try {
+                    UUID userId = UUID.fromString(token.getSubject());
+                    var userOpt = userRepository.findById(userId);
+                    if (userOpt.isEmpty() || userOpt.get().getTokenVersion() != verNum.intValue()
+                            || !"ACTIVE".equals(userOpt.get().getAccountStatus())) {
+                        return OAuth2TokenValidatorResult.failure(
+                                new OAuth2Error(
+                                        "invalid_token",
+                                        "The session has expired or has been revoked.",
+                                        null
+                                )
+                        );
+                    }
+                } catch (Exception ignored) {
+                    // fall through
+                }
+            }
+            return OAuth2TokenValidatorResult.success();
+        };
+
         decoder.setJwtValidator(
                 new DelegatingOAuth2TokenValidator<>(
                         JwtValidators.createDefaultWithIssuer(
                                 "medichannel-api"
                         ),
-                        rejectWebSocketTickets
+                        rejectWebSocketTickets,
+                        validateTokenVersion
                 )
         );
 

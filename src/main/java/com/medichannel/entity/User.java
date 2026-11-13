@@ -42,6 +42,9 @@ public class User {
     @Column(name = "failed_login_attempts", nullable = false)
     private int failedLoginAttempts = 0;
 
+    @Column(name = "token_version", nullable = false)
+    private int tokenVersion = 1;
+
     @Column(name = "locked_until")
     private Instant lockedUntil;
 
@@ -200,6 +203,14 @@ public class User {
 
     public int getFailedLoginAttempts() {
         return failedLoginAttempts;
+    }
+
+    public int getTokenVersion() {
+        return tokenVersion;
+    }
+
+    public void incrementTokenVersion() {
+        this.tokenVersion++;
     }
 
     public Instant getLockedUntil() {
