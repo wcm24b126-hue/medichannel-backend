@@ -294,11 +294,19 @@ public class AdminService {
     private AdminPaymentResponse toPaymentResponse(Payment payment) {
         Appointment appointment = payment.getAppointment();
 
-        String patientName = dataProtectionService.decrypt(
-                appointment.getPatient().getFirstNameEncrypted()
-        ) + " " + dataProtectionService.decrypt(
-                appointment.getPatient().getLastNameEncrypted()
-        );
+        String patientName;
+        try {
+            patientName = (dataProtectionService.decrypt(
+                    appointment.getPatient().getFirstNameEncrypted()
+            ) + " " + dataProtectionService.decrypt(
+                    appointment.getPatient().getLastNameEncrypted()
+            )).trim();
+            if (patientName.isBlank()) {
+                patientName = "Patient #" + appointment.getAppointmentNumber();
+            }
+        } catch (Exception e) {
+            patientName = "Patient #" + appointment.getAppointmentNumber();
+        }
 
         return new AdminPaymentResponse(
                 payment.getId(),

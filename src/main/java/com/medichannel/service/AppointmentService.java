@@ -955,11 +955,19 @@ public class AppointmentService {
         DoctorSession session = appointment.getSession();
         Patient patient = appointment.getPatient();
 
-        String patientName = dataProtectionService.decrypt(
-                patient.getFirstNameEncrypted()
-        ) + " " + dataProtectionService.decrypt(
-                patient.getLastNameEncrypted()
-        );
+        String patientName;
+        try {
+            patientName = (dataProtectionService.decrypt(
+                    patient.getFirstNameEncrypted()
+            ) + " " + dataProtectionService.decrypt(
+                    patient.getLastNameEncrypted()
+            )).trim();
+            if (patientName.isBlank()) {
+                patientName = "Patient #" + appointment.getAppointmentNumber();
+            }
+        } catch (Exception e) {
+            patientName = "Patient #" + appointment.getAppointmentNumber();
+        }
 
         return new DoctorAppointmentResponse(
                 appointment.getId(),
@@ -995,11 +1003,19 @@ public class AppointmentService {
         DoctorSession session = appointment.getSession();
         Patient patient = appointment.getPatient();
 
-        String patientName = dataProtectionService.decrypt(
-                patient.getFirstNameEncrypted()
-        ) + " " + dataProtectionService.decrypt(
-                patient.getLastNameEncrypted()
-        );
+        String patientName;
+        try {
+            patientName = (dataProtectionService.decrypt(
+                    patient.getFirstNameEncrypted()
+            ) + " " + dataProtectionService.decrypt(
+                    patient.getLastNameEncrypted()
+            )).trim();
+            if (patientName.isBlank()) {
+                patientName = "Patient #" + appointment.getAppointmentNumber();
+            }
+        } catch (Exception e) {
+            patientName = "Patient #" + appointment.getAppointmentNumber();
+        }
 
         return new AdminAppointmentResponse(
                 appointment.getId(),
