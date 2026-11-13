@@ -74,10 +74,12 @@ public class AppointmentController {
             @PathVariable UUID appointmentId
     ) {
         UUID userId = UUID.fromString(jwt.getSubject());
+        String role = jwt.getClaimAsString("role");
 
         return ResponseEntity.ok(
-                appointmentService.cancelMyAppointment(
+                appointmentService.cancelAppointment(
                         userId,
+                        role,
                         appointmentId
                 )
         );

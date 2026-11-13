@@ -105,11 +105,13 @@ public class ChatService {
                         "Sender account was not found."
                 ));
 
+        String encryptedContent = dataProtectionService.encrypt(content);
+
         ChatMessage message = new ChatMessage(
                 appointment,
                 sender,
                 senderRole,
-                content
+                encryptedContent
         );
         message.setSentAt(clock.instant());
 
@@ -280,6 +282,20 @@ public class ChatService {
                 .orElse("Doctor");
     }
 
+    private String decryptContent(String content) {
+        if (content == null) {
+            return null;
+        }
+        if (content.startsWith("v1:")) {
+            try {
+                return dataProtectionService.decrypt(content);
+            } catch (Exception ignored) {
+                return content;
+            }
+        }
+        return content;
+    }
+
     private ChatMessageResponse toResponse(
             ChatMessage message,
             String senderName
@@ -290,7 +306,7 @@ public class ChatService {
                 message.getSenderUser().getId(),
                 message.getSenderRole(),
                 senderName,
-                message.getContent(),
+                decryptContent(message.getContent()),
                 message.getSentAt()
         );
     }

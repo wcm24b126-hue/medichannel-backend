@@ -110,6 +110,12 @@ public class Appointment {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
+    @Column(name = "acceptance_status", nullable = false, length = 20)
+    private String acceptanceStatus = "PENDING";
+
+    @Column(name = "doctor_accepted_at")
+    private Instant doctorAcceptedAt;
+
     @Column(name = "cancelled_at")
     private Instant cancelledAt;
 
@@ -177,6 +183,45 @@ public class Appointment {
 
         this.status = AppointmentStatus.CANCELLED;
         this.cancelledAt = cancellationTime;
+    }
+
+    public void cancelByStaff(Instant cancellationTime) {
+        if (status == AppointmentStatus.CANCELLED) {
+            throw new IllegalStateException("Appointment is already cancelled.");
+        }
+        if (status == AppointmentStatus.COMPLETED) {
+            throw new IllegalStateException("Completed appointments cannot be cancelled.");
+        }
+        if (cancellationTime == null) {
+            throw new IllegalArgumentException("Cancellation time is required.");
+        }
+        this.status = AppointmentStatus.CANCELLED;
+        this.cancelledAt = cancellationTime;
+    }
+
+    public void acceptByDoctor(Instant time) {
+        if (status == AppointmentStatus.CANCELLED) {
+            throw new IllegalStateException("Cancelled appointments cannot be accepted.");
+        }
+        this.acceptanceStatus = "ACCEPTED";
+        this.doctorAcceptedAt = time;
+    }
+
+    public void declineByDoctor(Instant time) {
+        if (status == AppointmentStatus.COMPLETED) {
+            throw new IllegalStateException("Completed appointments cannot be declined.");
+        }
+        this.acceptanceStatus = "DECLINED";
+        this.status = AppointmentStatus.CANCELLED;
+        this.cancelledAt = time;
+    }
+
+    public String getAcceptanceStatus() {
+        return acceptanceStatus;
+    }
+
+    public Instant getDoctorAcceptedAt() {
+        return doctorAcceptedAt;
     }
 
     public void markPaid(PaymentMethod method) {

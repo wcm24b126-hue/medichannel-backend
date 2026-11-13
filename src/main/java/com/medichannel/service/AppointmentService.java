@@ -241,6 +241,44 @@ public class AppointmentService {
         return toResponse(saved);
     }
 
+    @Transactional
+    public AppointmentResponse cancelAppointment(
+            UUID userId,
+            String role,
+            UUID appointmentId
+    ) {
+        if ("DOCTOR".equalsIgnoreCase(role)) {
+            throw new ForbiddenOperationException(
+                    "Doctors cannot directly cancel appointments. Please request cancellation through a hospital manager or administrator."
+            );
+        }
+
+        if ("ADMIN".equalsIgnoreCase(role) || "MANAGER".equalsIgnoreCase(role)) {
+            Appointment appointment = appointmentRepository
+                    .findById(appointmentId)
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            "Appointment was not found."
+                    ));
+
+            if (appointment.getStatus() == AppointmentStatus.CANCELLED) {
+                throw new ConflictException("Appointment is already cancelled.");
+            }
+            if (appointment.getStatus() == AppointmentStatus.COMPLETED) {
+                throw new ConflictException("Completed appointments cannot be cancelled.");
+            }
+
+            appointment.cancelByStaff(clock.instant());
+            Appointment saved = appointmentRepository.saveAndFlush(appointment);
+
+            notifyAppointmentCancelled(saved);
+            publishQueue(saved);
+
+            return toResponse(saved);
+        }
+
+        return cancelMyAppointment(userId, appointmentId);
+    }
+
     // PATCH: Patient check-in for their own booked appointment.
     @Transactional
     public AppointmentResponse checkIn(
@@ -332,6 +370,64 @@ public class AppointmentService {
         return toDoctorResponse(
                 findDoctorAppointment(doctorUserId, appointmentId)
         );
+    }
+
+    @Transactional
+    public DoctorAppointmentResponse acceptAppointmentByDoctor(
+            UUID doctorUserId,
+            UUID appointmentId
+    ) {
+        Appointment appointment = findDoctorAppointment(
+                doctorUserId,
+                appointmentId
+        );
+
+        appointment.acceptByDoctor(clock.instant());
+        Appointment saved = appointmentRepository.saveAndFlush(appointment);
+
+        String when = appointment.getSession().getSessionDate()
+                + " at " + appointment.getSession().getStartTime();
+
+        notificationService.create(
+                appointment.getPatient().getUser().getId(),
+                NotificationType.APPOINTMENT_BOOKED,
+                "Appointment Accepted",
+                "The doctor has accepted your appointment on " + when + ". Make sure to be ready on time.",
+                appointment.getId()
+        );
+
+        publishQueue(saved);
+
+        return toDoctorResponse(saved);
+    }
+
+    @Transactional
+    public DoctorAppointmentResponse declineAppointmentByDoctor(
+            UUID doctorUserId,
+            UUID appointmentId
+    ) {
+        Appointment appointment = findDoctorAppointment(
+                doctorUserId,
+                appointmentId
+        );
+
+        appointment.declineByDoctor(clock.instant());
+        Appointment saved = appointmentRepository.saveAndFlush(appointment);
+
+        String when = appointment.getSession().getSessionDate()
+                + " at " + appointment.getSession().getStartTime();
+
+        notificationService.create(
+                appointment.getPatient().getUser().getId(),
+                NotificationType.APPOINTMENT_CANCELLED,
+                "Appointment Declined",
+                "The doctor was unable to accept your appointment on " + when + ". Please book another session.",
+                appointment.getId()
+        );
+
+        publishQueue(saved);
+
+        return toDoctorResponse(saved);
     }
 
     @Transactional
@@ -832,7 +928,9 @@ public class AppointmentService {
                 appointment.getArrivedAt(),
                 appointment.getConsultationStartedAt(),
                 appointment.getConsultationCompletedAt(),
-                appointment.getCancelledAt()
+                appointment.getCancelledAt(),
+                appointment.getAcceptanceStatus(),
+                appointment.getDoctorAcceptedAt()
         );
     }
 
@@ -885,7 +983,9 @@ public class AppointmentService {
                 appointment.getArrivedAt(),
                 appointment.getConsultationStartedAt(),
                 appointment.getConsultationCompletedAt(),
-                appointment.getCancelledAt()
+                appointment.getCancelledAt(),
+                appointment.getAcceptanceStatus(),
+                appointment.getDoctorAcceptedAt()
         );
     }
 

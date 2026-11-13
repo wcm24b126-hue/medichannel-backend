@@ -74,6 +74,32 @@ public class DoctorPortalController {
         );
     }
 
+    @PatchMapping("/appointments/{appointmentId}/accept")
+    public ResponseEntity<DoctorAppointmentResponse> acceptAppointment(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID appointmentId
+    ) {
+        return ResponseEntity.ok(
+                appointmentService.acceptAppointmentByDoctor(
+                        userId(jwt),
+                        appointmentId
+                )
+        );
+    }
+
+    @PatchMapping("/appointments/{appointmentId}/decline")
+    public ResponseEntity<DoctorAppointmentResponse> declineAppointment(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID appointmentId
+    ) {
+        return ResponseEntity.ok(
+                appointmentService.declineAppointmentByDoctor(
+                        userId(jwt),
+                        appointmentId
+                )
+        );
+    }
+
     @PatchMapping("/appointments/{appointmentId}/arrive")
     public ResponseEntity<DoctorAppointmentResponse> markArrived(
             @AuthenticationPrincipal Jwt jwt,
