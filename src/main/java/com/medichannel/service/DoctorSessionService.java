@@ -35,6 +35,7 @@ public class DoctorSessionService {
     private final DoctorRepository doctorRepository;
     private final RoomRepository roomRepository;
     private final SessionQueueService sessionQueueService;
+    private final AuditLogService auditLogService;
     private final Clock clock;
 
     public DoctorSessionService(
@@ -42,13 +43,34 @@ public class DoctorSessionService {
             DoctorRepository doctorRepository,
             RoomRepository roomRepository,
             SessionQueueService sessionQueueService,
+            AuditLogService auditLogService,
             Clock clock
     ) {
         this.doctorSessionRepository = doctorSessionRepository;
         this.doctorRepository = doctorRepository;
         this.roomRepository = roomRepository;
         this.sessionQueueService = sessionQueueService;
+        this.auditLogService = auditLogService;
         this.clock = clock;
+    }
+
+    private String getActorEmail() {
+        try {
+            var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+            if (auth != null) {
+                if (auth.getPrincipal() instanceof org.springframework.security.oauth2.jwt.Jwt jwt) {
+                    String email = jwt.getClaimAsString("email");
+                    if (email != null && !email.isBlank()) {
+                        return email;
+                    }
+                }
+                if (auth.getName() != null && !auth.getName().isBlank() && auth.getName().contains("@")) {
+                    return auth.getName();
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return "manager@medichannel.demo";
     }
 
     // Create a new doctor session.
@@ -88,6 +110,15 @@ public class DoctorSessionService {
         try {
             DoctorSession savedSession =
                     doctorSessionRepository.saveAndFlush(session);
+
+            auditLogService.log(
+                    getActorEmail(),
+                    "MANAGER",
+                    "Session created",
+                    "Session scheduled for Dr. " + doctor.getFirstName() + " " + doctor.getLastName()
+                            + " on " + request.sessionDate() + " (" + request.startTime() + " - " + request.endTime() + ")",
+                    "10.0.4.18"
+            );
 
             return toResponse(savedSession);
 
@@ -200,6 +231,14 @@ public class DoctorSessionService {
         DoctorSession session = findSession(sessionId);
         applyTransition(() -> session.cancel());
         publishQueue(session);
+        auditLogService.log(
+                getActorEmail(),
+                "MANAGER",
+                "Session cancelled",
+                "Session for Dr. " + session.getDoctor().getFirstName() + " " + session.getDoctor().getLastName()
+                        + " on " + session.getSessionDate() + " was cancelled.",
+                "10.0.4.18"
+        );
         return toResponse(session);
     }
 
@@ -211,6 +250,14 @@ public class DoctorSessionService {
         DoctorSession session = findSession(sessionId);
         session.updateDelay(delayMinutes);
         publishQueue(session);
+        auditLogService.log(
+                getActorEmail(),
+                "MANAGER",
+                "Session delayed",
+                "Session for Dr. " + session.getDoctor().getFirstName() + " " + session.getDoctor().getLastName()
+                        + " delayed by " + delayMinutes + " minutes.",
+                "10.0.4.18"
+        );
         return toResponse(session);
     }
 

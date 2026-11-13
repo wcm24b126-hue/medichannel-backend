@@ -282,6 +282,12 @@ public class SecurityConfig {
                                 "/api/v1/rooms/**"
                         ).hasAnyRole("ADMIN", "MANAGER")
 
+                        // Audit logs: Admin or Manager only.
+                        .requestMatchers(
+                                "/api/v1/audit-logs",
+                                "/api/v1/audit-logs/**"
+                        ).hasAnyRole("ADMIN", "MANAGER")
+
                         // Everything else requires authentication.
                         .anyRequest().authenticated()
                 )

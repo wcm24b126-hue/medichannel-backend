@@ -36,19 +36,22 @@ public class DoctorService {
     private final RoleRepository roleRepository;
     private final SpecialisationRepository specialisationRepository;
     private final PasswordEncoder passwordEncoder;
+    private final AuditLogService auditLogService;
 
     public DoctorService(
             DoctorRepository doctorRepository,
             UserRepository userRepository,
             RoleRepository roleRepository,
             SpecialisationRepository specialisationRepository,
-            PasswordEncoder passwordEncoder
+            PasswordEncoder passwordEncoder,
+            AuditLogService auditLogService
     ) {
         this.doctorRepository = doctorRepository;
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
         this.specialisationRepository = specialisationRepository;
         this.passwordEncoder = passwordEncoder;
+        this.auditLogService = auditLogService;
     }
 
     /*
@@ -105,6 +108,29 @@ public class DoctorService {
         );
 
         Doctor savedDoctor = doctorRepository.saveAndFlush(doctor);
+
+        String adminEmail = "admin@medichannel.demo";
+        try {
+            var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+            if (auth != null) {
+                if (auth.getPrincipal() instanceof org.springframework.security.oauth2.jwt.Jwt jwt) {
+                    String em = jwt.getClaimAsString("email");
+                    if (em != null && !em.isBlank()) {
+                        adminEmail = em;
+                    }
+                } else if (auth.getName() != null && auth.getName().contains("@")) {
+                    adminEmail = auth.getName();
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        auditLogService.log(
+                adminEmail,
+                "ADMIN",
+                "Account created (DOCTOR)",
+                "Doctor account created for Dr. " + savedDoctor.getFirstName() + " " + savedDoctor.getLastName() + " (" + email + ")",
+                "10.0.1.5"
+        );
 
         return new DoctorCreatedResponse(
                 "Doctor account and profile created. The account is active and ready for login.",
