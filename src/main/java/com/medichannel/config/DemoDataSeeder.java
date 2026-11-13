@@ -477,38 +477,43 @@ public class DemoDataSeeder implements ApplicationRunner {
 
         LocalDateTime end = start.plusMinutes(110);
 
-        if (start.toLocalDate().isAfter(date)
-                || end.toLocalDate().isAfter(date)
-                || start.toLocalTime().isBefore(LocalTime.of(6, 0))) {
-            // Outside bookable hours: fall back to the full day's fixed slots
-            // so the demo always has sessions for today.
-            slots.add(new TimeSlot(
-                    LocalTime.of(9, 0),
-                    LocalTime.of(12, 0),
-                    16,
-                    10
-            ));
-            slots.add(new TimeSlot(
-                    LocalTime.of(14, 0),
-                    LocalTime.of(17, 0),
-                    16,
-                    10
-            ));
-            slots.add(new TimeSlot(
-                    LocalTime.of(18, 0),
-                    LocalTime.of(21, 0),
-                    12,
-                    15
-            ));
-            return slots;
+        LocalTime startTime = start.toLocalTime();
+        LocalTime endTime;
+        if (end.toLocalDate().isAfter(date)) {
+            endTime = LocalTime.of(23, 59);
+        } else {
+            endTime = end.toLocalTime();
         }
 
         slots.add(new TimeSlot(
-                start.toLocalTime(),
-                end.toLocalTime(),
-                10,
+                LocalTime.of(9, 0),
+                LocalTime.of(12, 0),
+                16,
                 10
         ));
+        slots.add(new TimeSlot(
+                LocalTime.of(14, 0),
+                LocalTime.of(17, 0),
+                16,
+                10
+        ));
+        slots.add(new TimeSlot(
+                LocalTime.of(18, 0),
+                LocalTime.of(21, 0),
+                12,
+                15
+        ));
+
+        if (!start.toLocalDate().isAfter(date)
+                && startTime.isBefore(endTime)
+                && startTime.isAfter(LocalTime.of(6, 0))) {
+            slots.add(new TimeSlot(
+                    startTime,
+                    endTime,
+                    12,
+                    15
+            ));
+        }
 
         return slots;
     }

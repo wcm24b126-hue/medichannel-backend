@@ -66,10 +66,19 @@ public interface DoctorSessionRepository
             LEFT JOIN FETCH s.room r
             WHERE s.status = :status
               AND (
-                    s.sessionDate > :today
+                    (
+                        :sessionDate IS NOT NULL
+                        AND CAST(s.sessionDate AS string) = :sessionDate
+                    )
                     OR (
-                        s.sessionDate = :today
-                        AND s.startTime > :currentTime
+                        :sessionDate IS NULL
+                        AND (
+                            s.sessionDate > :today
+                            OR (
+                                s.sessionDate = :today
+                                AND (s.endTime > :currentTime OR s.startTime > :currentTime)
+                            )
+                        )
                     )
               )
               AND s.lastAppointmentNumber < s.maxAppointments
@@ -79,10 +88,6 @@ public interface DoctorSessionRepository
               AND u.emailVerified = true
               AND (:doctorId IS NULL OR d.id = :doctorId)
               AND (:specialisationId IS NULL OR sp.id = :specialisationId)
-              AND (
-                    :sessionDate IS NULL
-                    OR CAST(s.sessionDate AS string) = :sessionDate
-              )
               AND (
                     :q IS NULL
                     OR LOWER(CONCAT(d.firstName, ' ', d.lastName))
