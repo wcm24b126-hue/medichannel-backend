@@ -195,11 +195,12 @@ public class SecurityConfig {
                                 "/api/v1/doctor/**"
                         ).hasRole("DOCTOR")
 
-                        // Staff directory access for Admin and Manager.
+                        // Staff directory and stats access for Admin and Manager.
                         .requestMatchers(
                                 HttpMethod.GET,
                                 "/api/v1/admin/users",
-                                "/api/v1/admin/users/**"
+                                "/api/v1/admin/users/**",
+                                "/api/v1/admin/stats"
                         ).hasAnyRole("ADMIN", "MANAGER")
 
                         // Administration.
