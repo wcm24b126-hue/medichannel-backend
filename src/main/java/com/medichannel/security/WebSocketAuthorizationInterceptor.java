@@ -106,6 +106,11 @@ public class WebSocketAuthorizationInterceptor
         }
 
         if (command == StompCommand.SUBSCRIBE) {
+            if ("/topic/audit-logs".equals(destination)) {
+                requireRole(accessor, message, "ADMIN", "MANAGER");
+                return message;
+            }
+
             if (ALLOWED_USER_SUBSCRIPTIONS.contains(destination)) {
                 requireAuthenticated(accessor, message);
                 return message;
@@ -202,5 +207,24 @@ public class WebSocketAuthorizationInterceptor
                     "WebSocket authentication is required."
             );
         }
+    }
+
+    private void requireRole(
+            StompHeaderAccessor accessor,
+            Message<?> message,
+            String... allowedRoles
+    ) {
+        requireAuthenticated(accessor, message);
+        if (accessor.getUser() instanceof Authentication auth) {
+            for (String role : allowedRoles) {
+                if (auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_" + role))) {
+                    return;
+                }
+            }
+        }
+        throw new MessageDeliveryException(
+                message,
+                "You do not have permission to subscribe to this topic."
+        );
     }
 }

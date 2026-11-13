@@ -17,9 +17,33 @@ import com.medichannel.repository.RoomRepository;
 public class RoomService {
 
     private final RoomRepository roomRepository;
+    private final AuditLogService auditLogService;
 
-    public RoomService(RoomRepository roomRepository) {
+    public RoomService(
+            RoomRepository roomRepository,
+            AuditLogService auditLogService
+    ) {
         this.roomRepository = roomRepository;
+        this.auditLogService = auditLogService;
+    }
+
+    private String getActorEmail() {
+        try {
+            var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+            if (auth != null) {
+                if (auth.getPrincipal() instanceof org.springframework.security.oauth2.jwt.Jwt jwt) {
+                    String email = jwt.getClaimAsString("email");
+                    if (email != null && !email.isBlank()) {
+                        return email;
+                    }
+                }
+                if (auth.getName() != null && !auth.getName().isBlank() && auth.getName().contains("@")) {
+                    return auth.getName();
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return "admin@medichannel.demo";
     }
 
     @Transactional(readOnly = true)
@@ -54,7 +78,15 @@ public class RoomService {
                 request.capacity()
         );
 
-        return toResponse(roomRepository.saveAndFlush(room));
+        Room saved = roomRepository.saveAndFlush(room);
+        auditLogService.log(
+                getActorEmail(),
+                "ADMIN",
+                "Room created",
+                "Created room " + saved.getRoomNumber() + " (" + saved.getName() + ")",
+                "10.0.1.5"
+        );
+        return toResponse(saved);
     }
 
     @Transactional
