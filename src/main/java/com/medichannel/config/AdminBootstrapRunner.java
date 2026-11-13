@@ -30,7 +30,7 @@ public class AdminBootstrapRunner implements ApplicationRunner {
     private static final Logger logger =
             LoggerFactory.getLogger(AdminBootstrapRunner.class);
 
-    private static final int MINIMUM_PASSWORD_LENGTH = 12;
+    private static final int MINIMUM_PASSWORD_LENGTH = 8;
     private static final int MAXIMUM_BCRYPT_PASSWORD_BYTES = 72;
 
     private final UserRepository userRepository;
@@ -77,7 +77,7 @@ public class AdminBootstrapRunner implements ApplicationRunner {
         if (adminPassword.length() < MINIMUM_PASSWORD_LENGTH
                 || passwordBytes > MAXIMUM_BCRYPT_PASSWORD_BYTES) {
             throw new IllegalStateException(
-                    "APP_ADMIN_PASSWORD must contain at least 12 characters "
+                    "APP_ADMIN_PASSWORD must contain at least 8 characters "
                     + "and must not exceed 72 UTF-8 bytes."
             );
         }

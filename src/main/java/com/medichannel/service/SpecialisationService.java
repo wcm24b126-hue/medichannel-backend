@@ -6,6 +6,10 @@ import java.util.UUID;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+
+import com.medichannel.config.CacheConfig;
 
 import com.medichannel.dto.specialisation.SpecialisationRequest;
 import com.medichannel.dto.specialisation.SpecialisationResponse;
@@ -26,6 +30,7 @@ public class SpecialisationService {
     }
 
     @Transactional(readOnly = true)
+    @Cacheable(cacheNames = CacheConfig.PUBLIC_SPECIALISATIONS, key = "'active'")
     public List<SpecialisationResponse> getActiveSpecialisations() {
         return specialisationRepository.findByActiveTrue()
                 .stream()
@@ -45,6 +50,7 @@ public class SpecialisationService {
     }
 
     @Transactional
+    @CacheEvict(cacheNames = CacheConfig.PUBLIC_SPECIALISATIONS, allEntries = true, beforeInvocation = true)
     public SpecialisationResponse create(SpecialisationRequest request) {
         String name = normalizeName(request.name());
 
@@ -65,6 +71,7 @@ public class SpecialisationService {
     }
 
     @Transactional
+    @CacheEvict(cacheNames = CacheConfig.PUBLIC_SPECIALISATIONS, allEntries = true, beforeInvocation = true)
     public SpecialisationResponse update(
             UUID id,
             SpecialisationRequest request
@@ -89,6 +96,7 @@ public class SpecialisationService {
     }
 
     @Transactional
+    @CacheEvict(cacheNames = CacheConfig.PUBLIC_SPECIALISATIONS, allEntries = true, beforeInvocation = true)
     public SpecialisationResponse deactivate(UUID id) {
         Specialisation specialisation = findById(id);
         specialisation.deactivate();
@@ -96,6 +104,7 @@ public class SpecialisationService {
     }
 
     @Transactional
+    @CacheEvict(cacheNames = CacheConfig.PUBLIC_SPECIALISATIONS, allEntries = true, beforeInvocation = true)
     public SpecialisationResponse activate(UUID id) {
         Specialisation specialisation = findById(id);
         specialisation.activate();

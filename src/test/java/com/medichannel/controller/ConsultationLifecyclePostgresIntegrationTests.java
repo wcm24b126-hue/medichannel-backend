@@ -395,13 +395,13 @@ class ConsultationLifecyclePostgresIntegrationTests {
         )
                 .andExpect(status().isForbidden());
 
-        // Staff have operational read access.
+        // Staff have NO clinical read access (brief §2 privacy rule).
         mockMvc.perform(
                 get(APPOINTMENTS_URL + "/" + completedAppointmentId
                         + "/summary")
                         .with(adminJwt(fixture.adminUserId()))
         )
-                .andExpect(status().isOk());
+                .andExpect(status().isForbidden());
 
         // The assigned doctor can update the summary.
         mockMvc.perform(

@@ -7,6 +7,7 @@ import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 public record CreateDoctorRequest(
@@ -17,11 +18,15 @@ public record CreateDoctorRequest(
         String email,
 
         @NotBlank
-        @Size(min = 12, max = 72)
+        @Size(min = 8, max = 72)
+        @Pattern(
+                regexp = "^(?=.*[A-Za-z])(?=.*\\d)(?=.*[^A-Za-z0-9]).{8,72}$",
+                message = "Password must contain at least one letter, one number and one symbol."
+        )
         String initialPassword,
 
         @NotBlank
-        @Size(min = 12, max = 72)
+        @Size(min = 8, max = 72)
         String confirmPassword,
 
         @NotBlank

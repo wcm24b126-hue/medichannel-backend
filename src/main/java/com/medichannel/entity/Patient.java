@@ -39,6 +39,12 @@ public class Patient {
     @Column(name = "nic_lookup_hash", length = 64)
     private String nicLookupHash;
 
+    @Column(name = "nic_encrypted", columnDefinition = "TEXT")
+    private String nicEncrypted;
+
+    @Column(name = "address_encrypted", columnDefinition = "TEXT")
+    private String addressEncrypted;
+
     @Column(name = "date_of_birth_encrypted", columnDefinition = "TEXT")
     private String dateOfBirthEncrypted;
 
@@ -63,11 +69,37 @@ public class Patient {
             String dateOfBirthEncrypted,
             String genderEncrypted
     ) {
+        this(
+                user,
+                firstNameEncrypted,
+                lastNameEncrypted,
+                phoneEncrypted,
+                nicLookupHash,
+                null,
+                null,
+                dateOfBirthEncrypted,
+                genderEncrypted
+        );
+    }
+
+    public Patient(
+            User user,
+            String firstNameEncrypted,
+            String lastNameEncrypted,
+            String phoneEncrypted,
+            String nicLookupHash,
+            String nicEncrypted,
+            String addressEncrypted,
+            String dateOfBirthEncrypted,
+            String genderEncrypted
+    ) {
         this.user = user;
         this.firstNameEncrypted = firstNameEncrypted;
         this.lastNameEncrypted = lastNameEncrypted;
         this.phoneEncrypted = phoneEncrypted;
         this.nicLookupHash = nicLookupHash;
+        this.nicEncrypted = nicEncrypted;
+        this.addressEncrypted = addressEncrypted;
         this.dateOfBirthEncrypted = dateOfBirthEncrypted;
         this.genderEncrypted = genderEncrypted;
     }
@@ -87,10 +119,34 @@ public class Patient {
             String dateOfBirthEncrypted,
             String genderEncrypted
     ) {
+        updateProfile(
+                firstNameEncrypted,
+                lastNameEncrypted,
+                phoneEncrypted,
+                nicLookupHash,
+                null,
+                null,
+                dateOfBirthEncrypted,
+                genderEncrypted
+        );
+    }
+
+    public void updateProfile(
+            String firstNameEncrypted,
+            String lastNameEncrypted,
+            String phoneEncrypted,
+            String nicLookupHash,
+            String nicEncrypted,
+            String addressEncrypted,
+            String dateOfBirthEncrypted,
+            String genderEncrypted
+    ) {
         this.firstNameEncrypted = firstNameEncrypted;
         this.lastNameEncrypted = lastNameEncrypted;
         this.phoneEncrypted = phoneEncrypted;
         this.nicLookupHash = nicLookupHash;
+        this.nicEncrypted = nicEncrypted;
+        this.addressEncrypted = addressEncrypted;
         this.dateOfBirthEncrypted = dateOfBirthEncrypted;
         this.genderEncrypted = genderEncrypted;
     }
@@ -122,6 +178,14 @@ public class Patient {
 
     public String getNicLookupHash() {
         return nicLookupHash;
+    }
+
+    public String getNicEncrypted() {
+        return nicEncrypted;
+    }
+
+    public String getAddressEncrypted() {
+        return addressEncrypted;
     }
 
     public String getDateOfBirthEncrypted() {

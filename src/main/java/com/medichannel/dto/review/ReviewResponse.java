@@ -10,6 +10,7 @@ public record ReviewResponse(
         UUID doctorId,
         int rating,
         String comment,
+        String moderationStatus,
         Instant createdAt
 
 ) {

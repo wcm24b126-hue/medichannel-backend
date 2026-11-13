@@ -33,6 +33,7 @@ import com.medichannel.exception.ForbiddenOperationException;
 import com.medichannel.exception.ResourceNotFoundException;
 import com.medichannel.repository.AppointmentRepository;
 import com.medichannel.repository.DoctorSessionRepository;
+import com.medichannel.repository.NotificationRepository;
 import com.medichannel.repository.PatientRepository;
 import com.medichannel.repository.UserRepository;
 import com.medichannel.security.PatientDataProtectionService;
@@ -51,17 +52,22 @@ public class AppointmentService {
     private final DoctorSessionRepository doctorSessionRepository;
     private final PatientRepository patientRepository;
     private final UserRepository userRepository;
+    private final NotificationRepository notificationRepository;
     private final PatientDataProtectionService dataProtectionService;
     private final NotificationService notificationService;
     private final AppointmentAccessPolicy accessPolicy;
     private final SessionQueueService sessionQueueService;
     private final Clock clock;
 
+    private static final String THREE_NUMBERS_AWAY_TITLE =
+            "You are 3 numbers away";
+
     public AppointmentService(
             AppointmentRepository appointmentRepository,
             DoctorSessionRepository doctorSessionRepository,
             PatientRepository patientRepository,
             UserRepository userRepository,
+            NotificationRepository notificationRepository,
             PatientDataProtectionService dataProtectionService,
             NotificationService notificationService,
             AppointmentAccessPolicy accessPolicy,
@@ -72,6 +78,7 @@ public class AppointmentService {
         this.doctorSessionRepository = doctorSessionRepository;
         this.patientRepository = patientRepository;
         this.userRepository = userRepository;
+        this.notificationRepository = notificationRepository;
         this.dataProtectionService = dataProtectionService;
         this.notificationService = notificationService;
         this.accessPolicy = accessPolicy;
@@ -727,6 +734,51 @@ public class AppointmentService {
                 appointment.getStatus(),
                 clock.instant()
         );
+
+        notifyThreeNumbersAway(appointment.getSession(), summary.nowServing());
+    }
+
+    /**
+     * RT-04: notify the patient who is exactly three places behind the
+     * number currently being served. The persisted notification is the
+     * de-duplication marker, so a page reload or a repeated queue
+     * broadcast never produces the same alert twice.
+     */
+    private void notifyThreeNumbersAway(
+            DoctorSession session,
+            Integer nowServing
+    ) {
+        if (nowServing == null) {
+            return;
+        }
+
+        int targetNumber = nowServing + 3;
+
+        appointmentRepository
+                .findBySession_IdOrderByAppointmentNumberAsc(session.getId())
+                .stream()
+                .filter(appointment -> appointment.getAppointmentNumber()
+                        == targetNumber)
+                .filter(appointment -> appointment.getStatus()
+                        == AppointmentStatus.BOOKED
+                        || appointment.getStatus()
+                        == AppointmentStatus.ARRIVED)
+                .filter(appointment -> !notificationRepository
+                        .existsByAppointment_IdAndTypeAndTitle(
+                                appointment.getId(),
+                                NotificationType.APPOINTMENT_REMINDER,
+                                THREE_NUMBERS_AWAY_TITLE
+                        ))
+                .findFirst()
+                .ifPresent(appointment -> notificationService.create(
+                        appointment.getPatient().getUser().getId(),
+                        NotificationType.APPOINTMENT_REMINDER,
+                        THREE_NUMBERS_AWAY_TITLE,
+                        "You are 3 numbers away. Appointment #"
+                                + appointment.getAppointmentNumber()
+                                + " will be called soon; please stay close to the consultation room.",
+                        appointment.getId()
+                ));
     }
 
     // =========================================================

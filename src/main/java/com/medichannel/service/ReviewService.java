@@ -22,6 +22,7 @@ import com.medichannel.exception.ResourceNotFoundException;
 import com.medichannel.repository.AppointmentRepository;
 import com.medichannel.repository.DoctorRepository;
 import com.medichannel.repository.ReviewRepository;
+import com.medichannel.repository.UserRepository;
 
 @Service
 public class ReviewService {
@@ -31,19 +32,25 @@ public class ReviewService {
     private final DoctorRepository doctorRepository;
     private final AppointmentAccessPolicy accessPolicy;
     private final NotificationService notificationService;
+    private final AuditLogService auditLogService;
+    private final UserRepository userRepository;
 
     public ReviewService(
             ReviewRepository reviewRepository,
             AppointmentRepository appointmentRepository,
             DoctorRepository doctorRepository,
             AppointmentAccessPolicy accessPolicy,
-            NotificationService notificationService
+            NotificationService notificationService,
+            AuditLogService auditLogService,
+            UserRepository userRepository
     ) {
         this.reviewRepository = reviewRepository;
         this.appointmentRepository = appointmentRepository;
         this.doctorRepository = doctorRepository;
         this.accessPolicy = accessPolicy;
         this.notificationService = notificationService;
+        this.auditLogService = auditLogService;
+        this.userRepository = userRepository;
     }
 
     @Transactional
@@ -118,7 +125,10 @@ public class ReviewService {
                 ));
 
         List<Review> reviews = reviewRepository
-                .findByDoctor_IdOrderByCreatedAtDesc(doctorId);
+                .findByDoctor_IdAndModerationStatusOrderByCreatedAtDesc(
+                        doctorId,
+                        "APPROVED"
+                );
 
         Double average = reviewRepository.averageRatingByDoctorId(doctorId);
 
@@ -141,6 +151,80 @@ public class ReviewService {
                 .stream()
                 .map(this::toResponse)
                 .toList();
+    }
+
+    // Manager feedback moderation.
+    @Transactional(readOnly = true)
+    public List<ReviewResponse> getForModeration(String status) {
+        List<Review> reviews = status == null || status.isBlank()
+                ? reviewRepository.findAllByOrderByCreatedAtDesc()
+                : reviewRepository.findByModerationStatusOrderByCreatedAtDesc(
+                        status.trim().toUpperCase()
+                );
+
+        return reviews.stream().map(this::toResponse).toList();
+    }
+
+    @Transactional
+    public ReviewResponse moderate(
+            UUID reviewId,
+            boolean approve,
+            UUID actorUserId,
+            String ipAddress
+    ) {
+        Review review = reviewRepository.findById(reviewId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Feedback was not found."
+                ));
+
+        if (approve) {
+            review.approve();
+        } else {
+            review.hide();
+        }
+
+        auditLogService.log(
+                actorEmail(actorUserId),
+                actorRole(actorUserId),
+                approve ? "FEEDBACK_APPROVED" : "FEEDBACK_HIDDEN",
+                "Feedback " + reviewId,
+                ipAddress
+        );
+
+        return toResponse(review);
+    }
+
+    @Transactional
+    public void delete(
+            UUID reviewId,
+            UUID actorUserId,
+            String ipAddress
+    ) {
+        Review review = reviewRepository.findById(reviewId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Feedback was not found."
+                ));
+
+        reviewRepository.delete(review);
+        auditLogService.log(
+                actorEmail(actorUserId),
+                actorRole(actorUserId),
+                "FEEDBACK_DELETED",
+                "Feedback " + reviewId,
+                ipAddress
+        );
+    }
+
+    private String actorEmail(UUID userId) {
+        return userRepository.findById(userId)
+                .map(user -> user.getEmail())
+                .orElse("unknown");
+    }
+
+    private String actorRole(UUID userId) {
+        return userRepository.findById(userId)
+                .map(user -> user.getRole().getName())
+                .orElse("UNKNOWN");
     }
 
     private String normalizeComment(String comment) {
@@ -166,6 +250,7 @@ public class ReviewService {
                 review.getDoctor().getId(),
                 review.getRating(),
                 review.getComment(),
+                review.getModerationStatus(),
                 review.getCreatedAt()
         );
     }

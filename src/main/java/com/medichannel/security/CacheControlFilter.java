@@ -28,13 +28,42 @@ public class CacheControlFilter extends OncePerRequestFilter {
     ) throws ServletException, IOException {
 
         String path = request.getRequestURI();
+        String method = request.getMethod();
 
         if (path.startsWith("/api/")) {
-            response.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
-            response.setHeader("Pragma", "no-cache");
-            response.setHeader("Expires", "0");
+            if (isPublicCatalogue(path, method)) {
+                response.setHeader(
+                        "Cache-Control",
+                        "public, max-age=30, stale-while-revalidate=30"
+                );
+            } else {
+                response.setHeader(
+                        "Cache-Control",
+                        "no-store, no-cache, must-revalidate, private"
+                );
+                response.setHeader("Pragma", "no-cache");
+                response.setHeader("Expires", "0");
+            }
         }
 
         filterChain.doFilter(request, response);
+    }
+
+    /**
+     * Only anonymous GET catalogues may be cached. Everything else
+     * (appointments, summaries, chat, notifications, staff data) stays
+     * no-store.
+     */
+    private boolean isPublicCatalogue(String path, String method) {
+        if (!"GET".equalsIgnoreCase(method)) {
+            return false;
+        }
+
+        return path.equals("/api/v1/doctors")
+                || path.startsWith("/api/v1/doctors?")
+                || path.equals("/api/v1/specialisations")
+                || path.startsWith("/api/v1/specialisations?")
+                || path.equals("/api/v1/sessions")
+                || path.startsWith("/api/v1/sessions?");
     }
 }

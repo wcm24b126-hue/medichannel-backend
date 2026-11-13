@@ -104,4 +104,63 @@ class SecurityAuthorizationPostgresIntegrationTests {
                 .header("Authorization", "Bearer this-is-not-a-valid-jwt")
         ).andExpect(status().isUnauthorized());
     }
+
+    @Test
+    void anyoneCanReadPublishedNotices() throws Exception {
+        mockMvc.perform(get("/api/v1/notices"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void customerCannotManageNotices() throws Exception {
+        mockMvc.perform(get("/api/v1/notices/manage").with(jwt().jwt(token ->
+                        token.claim("role", "CUSTOMER"))))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void managerCanManageNotices() throws Exception {
+        mockMvc.perform(get("/api/v1/notices/manage").with(jwt()
+                        .authorities(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_MANAGER"))
+                        .jwt(token -> token.claim("role", "MANAGER"))))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void customerCannotReadReports() throws Exception {
+        mockMvc.perform(get("/api/v1/reports/overview").with(jwt().jwt(token ->
+                        token.claim("role", "CUSTOMER"))))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void managerCanReadReports() throws Exception {
+        mockMvc.perform(get("/api/v1/reports/overview").with(jwt()
+                        .authorities(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_MANAGER"))
+                        .jwt(token -> token.claim("role", "MANAGER"))))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void customerCannotModerateFeedback() throws Exception {
+        mockMvc.perform(get("/api/v1/reviews/manage").with(jwt().jwt(token ->
+                        token.claim("role", "CUSTOMER"))))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void managerCanModerateFeedback() throws Exception {
+        mockMvc.perform(get("/api/v1/reviews/manage").with(jwt()
+                        .authorities(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_MANAGER"))
+                        .jwt(token -> token.claim("role", "MANAGER"))))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void managerCannotReadAuditLogs() throws Exception {
+        mockMvc.perform(get("/api/v1/audit-logs").with(jwt()
+                        .authorities(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_MANAGER"))
+                        .jwt(token -> token.claim("role", "MANAGER"))))
+                .andExpect(status().isForbidden());
+    }
 }

@@ -18,7 +18,16 @@ public interface ReviewRepository extends JpaRepository<Review, UUID> {
 
     boolean existsByAppointment_Id(UUID appointmentId);
 
-    List<Review> findByDoctor_IdOrderByCreatedAtDesc(UUID doctorId);
+    List<Review> findByDoctor_IdAndModerationStatusOrderByCreatedAtDesc(
+            UUID doctorId,
+            String moderationStatus
+    );
+
+    List<Review> findAllByOrderByCreatedAtDesc();
+
+    List<Review> findByModerationStatusOrderByCreatedAtDesc(
+            String moderationStatus
+    );
 
     List<Review> findByPatient_User_IdOrderByCreatedAtDesc(UUID userId);
 
@@ -28,6 +37,7 @@ public interface ReviewRepository extends JpaRepository<Review, UUID> {
             SELECT AVG(r.rating)
             FROM Review r
             WHERE r.doctor.id = :doctorId
+              AND r.moderationStatus = 'APPROVED'
             """)
     Double averageRatingByDoctorId(
             @Param("doctorId") UUID doctorId

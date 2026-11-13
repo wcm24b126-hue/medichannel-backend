@@ -107,7 +107,7 @@ public class WebSocketAuthorizationInterceptor
 
         if (command == StompCommand.SUBSCRIBE) {
             if ("/topic/audit-logs".equals(destination)) {
-                requireRole(accessor, message, "ADMIN", "MANAGER");
+                requireRole(accessor, message, "ADMIN");
                 return message;
             }
 

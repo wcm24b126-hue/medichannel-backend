@@ -95,14 +95,23 @@ repository and provide the prompted environment variables:
 - `JWT_SECRET`, `ENCRYPTION_KEY`, and `HMAC_SECRET`: three separate
   Base64-encoded 32-byte secrets. Generate each independently with
   `openssl rand -base64 32`.
-- `APP_FRONTEND_ORIGIN`: exact deployed frontend origin, without a path.
+- `APP_FRONTEND_ORIGIN`: exact deployed frontend origin, without a path or
+  wildcard (for example `https://medichannel.netlify.app`).
+- `APP_ADMIN_EMAIL` and `APP_ADMIN_PASSWORD`: used once to bootstrap the first
+  ADMIN account. The password must contain at least 8 characters, including a
+  letter, a number and a symbol. Remove or rotate these values after the first
+  successful sign-in.
+- `APP_DEMO_SEED`: leave unset or `false` in production. Set `true` only on an
+  isolated staging database and also provide `APP_DEMO_PASSWORD` (8+ characters
+  with a letter, a number and a symbol).
 
-Render supplies `PORT`; Spring Boot binds to it automatically. The blueprint
-uses the `prod` logging profile. Flyway will run every unapplied migration
-included in the deployed artifact, so verify all required migration files are
-committed and test them against the Neon `development` branch before deploying.
-The free Render plan may suspend the service while idle; change the plan in
-Render if always-on availability is required.
+The blueprint deploys the `main` branch and uses the `prod` profile. Render
+supplies `PORT`; Spring Boot binds to it automatically. Flyway
+runs every unapplied migration included in the deployed artifact (currently
+V1–V15), so verify all migration files are committed and test them against a
+disposable database before deploying. The free Render plan may suspend the
+service while idle; change the plan in Render if always-on availability is
+required.
 
 ## Team Development
 

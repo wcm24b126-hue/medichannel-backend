@@ -3,6 +3,7 @@ package com.medichannel.controller;
 import java.util.List;
 import java.util.UUID;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 
 import org.springframework.http.HttpStatus;
@@ -56,5 +57,62 @@ public class ReviewController {
         return ResponseEntity.ok(
                 reviewService.getDoctorReviews(doctorId)
         );
+    }
+
+    // Manager feedback moderation.
+    @GetMapping("/reviews/manage")
+    public ResponseEntity<List<ReviewResponse>> getFeedbackForModeration(
+            @RequestParam(required = false) String status
+    ) {
+        return ResponseEntity.ok(reviewService.getForModeration(status));
+    }
+
+    @PatchMapping("/reviews/{reviewId}/approve")
+    public ResponseEntity<ReviewResponse> approve(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID reviewId,
+            HttpServletRequest httpRequest
+    ) {
+        UUID userId = UUID.fromString(jwt.getSubject());
+        return ResponseEntity.ok(reviewService.moderate(
+                reviewId,
+                true,
+                userId,
+                clientIp(httpRequest)
+        ));
+    }
+
+    @PatchMapping("/reviews/{reviewId}/hide")
+    public ResponseEntity<ReviewResponse> hide(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID reviewId,
+            HttpServletRequest httpRequest
+    ) {
+        UUID userId = UUID.fromString(jwt.getSubject());
+        return ResponseEntity.ok(reviewService.moderate(
+                reviewId,
+                false,
+                userId,
+                clientIp(httpRequest)
+        ));
+    }
+
+    @DeleteMapping("/reviews/{reviewId}")
+    public ResponseEntity<Void> delete(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID reviewId,
+            HttpServletRequest httpRequest
+    ) {
+        UUID userId = UUID.fromString(jwt.getSubject());
+        reviewService.delete(reviewId, userId, clientIp(httpRequest));
+        return ResponseEntity.noContent().build();
+    }
+
+    private String clientIp(HttpServletRequest request) {
+        String forwarded = request.getHeader("X-Forwarded-For");
+        if (forwarded != null && !forwarded.isBlank()) {
+            return forwarded.split(",")[0].trim();
+        }
+        return request.getRemoteAddr();
     }
 }

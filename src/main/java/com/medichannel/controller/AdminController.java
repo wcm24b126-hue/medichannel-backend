@@ -14,6 +14,8 @@ import com.medichannel.dto.admin.AdminAppointmentResponse;
 import com.medichannel.dto.admin.AdminPaymentResponse;
 import com.medichannel.dto.admin.AdminStatsResponse;
 import com.medichannel.dto.admin.AdminUserResponse;
+import com.medichannel.dto.admin.CreateManagerRequest;
+import com.medichannel.dto.admin.ResetStaffPasswordRequest;
 import com.medichannel.enums.AppointmentStatus;
 import com.medichannel.service.AdminService;
 
@@ -33,6 +35,31 @@ public class AdminController {
             @RequestParam(required = false) String status
     ) {
         return ResponseEntity.ok(adminService.listUsers(role, status));
+    }
+
+    @PostMapping("/managers")
+    public ResponseEntity<AdminUserResponse> createManager(
+            @AuthenticationPrincipal Jwt jwt,
+            @jakarta.validation.Valid @RequestBody CreateManagerRequest request
+    ) {
+        return ResponseEntity.status(org.springframework.http.HttpStatus.CREATED)
+                .body(adminService.createManager(actingAdminId(jwt), request));
+    }
+
+    @PostMapping("/users/{userId}/reset-password")
+    public ResponseEntity<AdminUserResponse> resetStaffPassword(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID userId,
+            @jakarta.validation.Valid
+            @RequestBody ResetStaffPasswordRequest request
+    ) {
+        return ResponseEntity.ok(
+                adminService.resetStaffPassword(
+                        actingAdminId(jwt),
+                        userId,
+                        request
+                )
+        );
     }
 
     @GetMapping("/users/{userId}")

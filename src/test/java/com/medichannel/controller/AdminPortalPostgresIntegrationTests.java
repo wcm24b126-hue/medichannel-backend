@@ -63,7 +63,7 @@ class AdminPortalPostgresIntegrationTests {
 
     private static final String ADMIN_URL = "/api/v1/admin";
     private static final String AUTH_URL = "/api/v1/auth";
-    private static final String REGISTER_PASSWORD = "StrongPass12345";
+    private static final String REGISTER_PASSWORD = "StrongPass12345!";
 
     @Autowired
     private MockMvc mockMvc;

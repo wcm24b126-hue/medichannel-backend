@@ -26,3 +26,12 @@ services:
         sync: false
       - key: APP_FRONTEND_ORIGIN
         sync: false
+      - key: APP_ADMIN_EMAIL
+        sync: false
+      - key: APP_ADMIN_PASSWORD
+        sync: false
+      # Optional: set to true only for an isolated staging database.
+      - key: APP_DEMO_SEED
+        sync: false
+      - key: APP_DEMO_PASSWORD
+        sync: false

@@ -323,3 +323,51 @@ Delay request: `{ "delayMinutes": 15 }`.
 ## 13. Health
 
 `GET /actuator/health` — public, used by Render health checks.
+
+---
+
+## 14. Notices — public read, ADMIN/MANAGER write
+
+| Method | Path | Access | Purpose |
+|---|---|---|---|
+| GET | `/api/v1/notices` | public | Published hospital notices |
+| GET | `/api/v1/notices/manage` | ADMIN, MANAGER | All notices, including drafts |
+| POST | `/api/v1/notices` | ADMIN, MANAGER | Create a notice (optionally published) |
+| PUT | `/api/v1/notices/{id}` | ADMIN, MANAGER | Update title, body and publish state |
+| PATCH | `/api/v1/notices/{id}/publish` | ADMIN, MANAGER | Publish a notice |
+| PATCH | `/api/v1/notices/{id}/withdraw` | ADMIN, MANAGER | Withdraw a published notice |
+| DELETE | `/api/v1/notices/{id}` | ADMIN, MANAGER | Delete a notice |
+
+Request body: `{ "title": "...", "body": "...", "published": true }`.
+
+---
+
+## 15. Reports — ADMIN/MANAGER
+
+`GET /api/v1/reports/overview?from=YYYY-MM-DD&to=YYYY-MM-DD`
+
+The date range is optional (defaults to the last 30 days, maximum 366 days).
+All figures are computed in the backend with SQL aggregate queries:
+
+- `todaySessions` — today's sessions with doctor, room, type, status and
+  booked/completed counts.
+- `appointmentsPerDay` — appointment count per session date.
+- `physicalAppointments`, `onlineAppointments` — totals by consultation type.
+- `totalAppointments`, `noShows`, `cancelledAppointments`, `noShowRate`.
+- `revenueLkr`, `completedPayments` — completed payments in the range.
+- `topDoctors` — appointments and revenue per doctor (top five).
+- `doctorRatings` — average rating and review count per doctor.
+
+---
+
+## 16. Feedback moderation — ADMIN/MANAGER
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/v1/reviews/manage?status=APPROVED` | List feedback (optional status filter) |
+| PATCH | `/api/v1/reviews/{id}/approve` | Approve feedback |
+| PATCH | `/api/v1/reviews/{id}/hide` | Hide feedback from public ratings |
+| DELETE | `/api/v1/reviews/{id}` | Delete feedback |
+
+Public doctor reviews (`GET /api/v1/doctors/{id}/reviews`) and average
+ratings only include `APPROVED` feedback.

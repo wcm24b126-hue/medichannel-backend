@@ -26,6 +26,9 @@ public record PatientProfileRequest(
         LocalDate dateOfBirth,
 
         @Size(max = 30)
-        String gender
+        String gender,
+
+        @Size(max = 500, message = "Address must not exceed 500 characters.")
+        String address
 ) {
 }

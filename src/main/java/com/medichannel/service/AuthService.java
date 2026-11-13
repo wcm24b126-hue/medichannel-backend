@@ -93,6 +93,8 @@ public class AuthService {
             );
         }
 
+        com.medichannel.security.PasswordPolicy.validate(request.password());
+
         Role customerRole = roleRepository.findByName(CUSTOMER_ROLE)
                 .orElseThrow(() -> new IllegalStateException(
                         "The required CUSTOMER role is not configured."

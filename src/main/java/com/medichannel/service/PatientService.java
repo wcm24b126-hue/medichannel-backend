@@ -65,7 +65,7 @@ public class PatientService {
                 protectionService.encrypt(request.lastName().trim());
 
         String encryptedPhone =
-                protectionService.encrypt(normalizeOptional(request.phone()));
+                protectionService.encrypt(normalizePhone(request.phone()));
 
         String encryptedDateOfBirth =
                 protectionService.encrypt(
@@ -77,12 +77,16 @@ public class PatientService {
         String encryptedGender =
                 protectionService.encrypt(normalizeOptional(request.gender()));
 
+        String normalizedNicValue = normalizedNic;
+
         Patient patient = new Patient(
                 user,
                 encryptedFirstName,
                 encryptedLastName,
                 encryptedPhone,
                 nicHash,
+                protectionService.encrypt(normalizedNicValue),
+                protectionService.encrypt(normalizeOptional(request.address())),
                 encryptedDateOfBirth,
                 encryptedGender
         );
@@ -114,6 +118,9 @@ public class PatientService {
         String nicHash = normalizedNic == null
                 ? patient.getNicLookupHash()
                 : protectionService.createNicLookupHash(normalizedNic);
+        String nicEncrypted = normalizedNic == null
+                ? patient.getNicEncrypted()
+                : protectionService.encrypt(normalizedNic);
 
         if (nicHash != null
                 && !nicHash.equals(patient.getNicLookupHash())
@@ -126,8 +133,10 @@ public class PatientService {
         patient.updateProfile(
                 protectionService.encrypt(request.firstName().trim()),
                 protectionService.encrypt(request.lastName().trim()),
-                protectionService.encrypt(normalizeOptional(request.phone())),
+                protectionService.encrypt(normalizePhone(request.phone())),
                 nicHash,
+                nicEncrypted,
+                protectionService.encrypt(normalizeOptional(request.address())),
                 protectionService.encrypt(
                         request.dateOfBirth() == null
                                 ? null
@@ -203,6 +212,14 @@ public class PatientService {
                 patient.getGenderEncrypted()
         );
 
+        String nic = protectionService.decrypt(
+                patient.getNicEncrypted()
+        );
+
+        String address = protectionService.decrypt(
+                patient.getAddressEncrypted()
+        );
+
         return new PatientProfileResponse(
                 patient.getId(),
                 firstName,
@@ -211,7 +228,9 @@ public class PatientService {
                 dateOfBirth,
                 gender,
                 patient.getCreatedAt(),
-                patient.getUpdatedAt()
+                patient.getUpdatedAt(),
+                nic,
+                address
         );
     }
 
@@ -243,5 +262,27 @@ public class PatientService {
         }
 
         return value.trim();
+    }
+
+    /**
+     * BR-10: Sri Lankan mobile numbers use the 07XXXXXXXX format.
+     */
+    private String normalizePhone(String phone) {
+        String normalized = normalizeOptional(phone);
+
+        if (normalized == null) {
+            return null;
+        }
+
+        String compact = normalized.replaceAll("[\\s-]", "");
+
+        if (!compact.matches("07[0-9]{8}")) {
+            throw new IllegalArgumentException(
+                    "Please provide a valid Sri Lankan mobile number "
+                            + "in the 07XXXXXXXX format."
+            );
+        }
+
+        return compact;
     }
 }

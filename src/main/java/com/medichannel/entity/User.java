@@ -213,6 +213,13 @@ public class User {
         this.tokenVersion++;
     }
 
+    public void updatePasswordHash(String passwordHash) {
+        if (passwordHash == null || passwordHash.isBlank()) {
+            throw new IllegalArgumentException("Password hash is required.");
+        }
+        this.passwordHash = passwordHash;
+    }
+
     public Instant getLockedUntil() {
         return lockedUntil;
     }

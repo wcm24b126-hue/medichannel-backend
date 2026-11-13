@@ -3,6 +3,7 @@ package com.medichannel.config;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -26,19 +27,27 @@ import com.medichannel.dto.room.RoomRequest;
 import com.medichannel.dto.session.DoctorSessionRequest;
 import com.medichannel.dto.session.DoctorSessionResponse;
 import com.medichannel.dto.specialisation.SpecialisationRequest;
+import com.medichannel.entity.Appointment;
 import com.medichannel.entity.Doctor;
+import com.medichannel.entity.DoctorSession;
+import com.medichannel.entity.Notice;
+import com.medichannel.entity.Patient;
 import com.medichannel.entity.Role;
 import com.medichannel.entity.Room;
 import com.medichannel.entity.Specialisation;
 import com.medichannel.entity.User;
 import com.medichannel.enums.ConsultationType;
 import com.medichannel.enums.RoomType;
+import com.medichannel.repository.AppointmentRepository;
 import com.medichannel.repository.DoctorRepository;
 import com.medichannel.repository.DoctorSessionRepository;
+import com.medichannel.repository.NoticeRepository;
+import com.medichannel.repository.PatientRepository;
 import com.medichannel.repository.RoleRepository;
 import com.medichannel.repository.RoomRepository;
 import com.medichannel.repository.SpecialisationRepository;
 import com.medichannel.repository.UserRepository;
+import com.medichannel.security.PatientDataProtectionService;
 import com.medichannel.service.DoctorService;
 import com.medichannel.service.DoctorSessionService;
 import com.medichannel.service.RoomService;
@@ -58,7 +67,7 @@ public class DemoDataSeeder implements ApplicationRunner {
     private static final Logger logger =
             LoggerFactory.getLogger(DemoDataSeeder.class);
 
-    private static final int MINIMUM_PASSWORD_LENGTH = 12;
+    private static final int MINIMUM_PASSWORD_LENGTH = 8;
     private static final int MAXIMUM_BCRYPT_PASSWORD_BYTES = 72;
 
     private static final String EMAIL_DOMAIN = "medichannel.demo";
@@ -135,6 +144,10 @@ public class DemoDataSeeder implements ApplicationRunner {
     private final DoctorSessionRepository doctorSessionRepository;
     private final SpecialisationRepository specialisationRepository;
     private final RoomRepository roomRepository;
+    private final PatientRepository patientRepository;
+    private final AppointmentRepository appointmentRepository;
+    private final NoticeRepository noticeRepository;
+    private final PatientDataProtectionService dataProtectionService;
     private final SpecialisationService specialisationService;
     private final RoomService roomService;
     private final DoctorService doctorService;
@@ -153,6 +166,10 @@ public class DemoDataSeeder implements ApplicationRunner {
             DoctorSessionRepository doctorSessionRepository,
             SpecialisationRepository specialisationRepository,
             RoomRepository roomRepository,
+            PatientRepository patientRepository,
+            AppointmentRepository appointmentRepository,
+            NoticeRepository noticeRepository,
+            PatientDataProtectionService dataProtectionService,
             SpecialisationService specialisationService,
             RoomService roomService,
             DoctorService doctorService,
@@ -168,6 +185,10 @@ public class DemoDataSeeder implements ApplicationRunner {
         this.doctorSessionRepository = doctorSessionRepository;
         this.specialisationRepository = specialisationRepository;
         this.roomRepository = roomRepository;
+        this.patientRepository = patientRepository;
+        this.appointmentRepository = appointmentRepository;
+        this.noticeRepository = noticeRepository;
+        this.dataProtectionService = dataProtectionService;
         this.specialisationService = specialisationService;
         this.roomService = roomService;
         this.doctorService = doctorService;
@@ -198,9 +219,12 @@ public class DemoDataSeeder implements ApplicationRunner {
         List<Room> rooms = seedRooms();
 
         List<Doctor> doctors = seedDoctors(specialisations);
+        seedDemoAdmin();
         seedManager();
 
         seedSessions(doctors, rooms);
+        seedDemoPatientsAndHistory(doctors, rooms);
+        seedNotices();
 
         logger.info(
                 "Demo data seeding finished: {} doctors, {} rooms and "
@@ -224,10 +248,194 @@ public class DemoDataSeeder implements ApplicationRunner {
         if (demoPassword.length() < MINIMUM_PASSWORD_LENGTH
                 || passwordBytes > MAXIMUM_BCRYPT_PASSWORD_BYTES) {
             throw new IllegalStateException(
-                    "APP_DEMO_PASSWORD must contain at least 12 characters "
+                    "APP_DEMO_PASSWORD must contain at least 8 characters "
                             + "and must not exceed 72 UTF-8 bytes."
             );
         }
+
+        if (!demoPassword.matches(
+                "(?=.*[A-Za-z])(?=.*\\d)(?=.*[^A-Za-z0-9]).+"
+        )) {
+            throw new IllegalStateException(
+                    "APP_DEMO_PASSWORD must contain a letter, a number "
+                            + "and a symbol."
+            );
+        }
+    }
+
+    /**
+     * Creates fictional customer accounts and a past session containing
+     * one appointment in every lifecycle status. This gives assessors
+     * realistic data for every role and every status without touching
+     * production data.
+     */
+    private void seedDemoPatientsAndHistory(
+            List<Doctor> doctors,
+            List<Room> rooms
+    ) {
+        Role customerRole = roleRepository.findByName("CUSTOMER")
+                .orElseThrow(() -> new IllegalStateException(
+                        "The required CUSTOMER role is not configured."
+                ));
+
+        String[][] people = {
+                {"Nimal", "Perera", "199012345678", "Colombo 05"},
+                {"Sanduni", "Fernando", "199223456789", "Kandy"},
+                {"Ruwan", "Jayasinghe", "198834567890", "Galle"},
+                {"Tharushi", "Mendis", "199545678901", "Negombo"},
+                {"Kasun", "Wickramasinghe", "199356789012", "Matara"},
+                {"Anjali", "Dissanayake", "199667890123", "Kurunegala"}
+        };
+
+        List<Patient> patients = new ArrayList<>();
+
+        for (int index = 0; index < people.length; index++) {
+            String[] person = people[index];
+            String email = "patient" + (index + 1) + "@" + EMAIL_DOMAIN;
+
+            User user = userRepository.findByEmail(email).orElse(null);
+
+            if (user == null) {
+                user = new User(
+                        customerRole,
+                        email,
+                        passwordEncoder.encode(demoPassword)
+                );
+                user.activateByAdministrator();
+                userRepository.saveAndFlush(user);
+                logger.info("Demo patient created: {}", email);
+            }
+
+            final User owner = user;
+            final int number = index;
+
+            Patient patient = patientRepository.findByUserId(owner.getId())
+                    .orElseGet(() -> patientRepository.saveAndFlush(
+                            new Patient(
+                                    owner,
+                                    dataProtectionService.encrypt(
+                                            person[0]
+                                    ),
+                                    dataProtectionService.encrypt(
+                                            person[1]
+                                    ),
+                                    dataProtectionService.encrypt(
+                                            "07712345" + (10 + number)
+                                    ),
+                                    dataProtectionService.createNicLookupHash(
+                                            person[2]
+                                    ),
+                                    dataProtectionService.encrypt(person[2]),
+                                    dataProtectionService.encrypt(person[3]),
+                                    dataProtectionService.encrypt(
+                                            "1990-01-0" + (number + 1)
+                                    ),
+                                    dataProtectionService.encrypt(
+                                            number % 2 == 0
+                                                    ? "MALE"
+                                                    : "FEMALE"
+                                    )
+                            )
+                    ));
+
+            patients.add(patient);
+        }
+
+        if (appointmentRepository.count() > 0) {
+            return;
+        }
+
+        Doctor doctor = doctors.get(0);
+        LocalDate yesterday = LocalDate.now(clock).minusDays(1);
+
+        DoctorSession session = new DoctorSession(
+                doctor,
+                rooms.get(0),
+                yesterday,
+                LocalTime.of(9, 0),
+                LocalTime.of(12, 0),
+                ConsultationType.PHYSICAL,
+                12
+        );
+        session.open();
+        doctorSessionRepository.saveAndFlush(session);
+
+        Instant base = yesterday.atTime(9, 0)
+                .atZone(TimeConfiguration.APPLICATION_ZONE)
+                .toInstant();
+
+        for (int index = 0; index < 6; index++) {
+            Appointment appointment = new Appointment(
+                    session,
+                    patients.get(index % patients.size()),
+                    dataProtectionService.encrypt(
+                            "Demo consultation reason " + (index + 1)
+                    )
+            );
+            appointment = appointmentRepository.saveAndFlush(appointment);
+
+            switch (index) {
+                case 1 -> appointment.markArrived(base.plusSeconds(600));
+                case 2 -> {
+                    appointment.markArrived(base.plusSeconds(1200));
+                    appointment.startConsultation(base.plusSeconds(1500));
+                }
+                case 3 -> {
+                    appointment.markArrived(base.plusSeconds(1800));
+                    appointment.startConsultation(base.plusSeconds(2100));
+                    appointment.complete(base.plusSeconds(2400));
+                }
+                case 4 -> appointment.markNoShow();
+                case 5 -> appointment.cancelByStaff(base.plusSeconds(3000));
+                default -> {
+                    // BOOKED is the initial status.
+                }
+            }
+
+            appointmentRepository.saveAndFlush(appointment);
+        }
+
+        logger.info(
+                "Demo history seeded: one appointment in every status."
+        );
+
+        session.start();
+        doctorSessionRepository.saveAndFlush(session);
+    }
+
+    private void seedNotices() {
+        if (noticeRepository.count() > 0) {
+            return;
+        }
+
+        User manager = userRepository.findByEmail("manager@" + EMAIL_DOMAIN)
+                .orElse(null);
+
+        if (manager == null) {
+            return;
+        }
+
+        Notice welcome = new Notice(
+                "Welcome to MediChannel",
+                "Book a doctor, pay securely and join your consultation "
+                        + "online. Reception opens 30 minutes before each "
+                        + "session.",
+                manager
+        );
+        welcome.publish();
+        noticeRepository.save(welcome);
+
+        Notice parking = new Notice(
+                "Parking and accessibility",
+                "Visitor parking is available on level B1. Wheelchair "
+                        + "access is provided at the main entrance and all "
+                        + "consultation rooms.",
+                manager
+        );
+        parking.publish();
+        noticeRepository.save(parking);
+
+        logger.info("Demo notices seeded.");
     }
 
     private List<Specialisation> seedSpecialisations() {
@@ -340,6 +548,29 @@ public class DemoDataSeeder implements ApplicationRunner {
         return result;
     }
 
+    private void seedDemoAdmin() {
+        String email = "admin@" + EMAIL_DOMAIN;
+
+        if (userRepository.existsByEmail(email)) {
+            return;
+        }
+
+        Role adminRole = roleRepository.findByName("ADMIN")
+                .orElseThrow(() -> new IllegalStateException(
+                        "The required ADMIN role is not configured."
+                ));
+
+        User admin = new User(
+                adminRole,
+                email,
+                passwordEncoder.encode(demoPassword)
+        );
+        admin.activateByAdministrator();
+        userRepository.saveAndFlush(admin);
+
+        logger.info("Demo administrator created: {}", email);
+    }
+
     private void seedManager() {
         String email = "manager@" + EMAIL_DOMAIN;
 
@@ -420,7 +651,7 @@ public class DemoDataSeeder implements ApplicationRunner {
                                 )
                         );
 
-                doctorSessionService.openSession(session.sessionId());
+                // createSession already opens the session for booking.
             }
         }
     }
@@ -507,13 +738,27 @@ public class DemoDataSeeder implements ApplicationRunner {
         if (!start.toLocalDate().isAfter(date)
                 && startTime.isBefore(endTime)
                 && startTime.isAfter(LocalTime.of(6, 0))) {
+            long availableMinutes = java.time.Duration
+                    .between(startTime, endTime)
+                    .toMinutes();
+            int maxAppointments = (int) Math.max(
+                    1,
+                    availableMinutes / 15
+            );
+
             slots.add(new TimeSlot(
                     startTime,
                     endTime,
-                    12,
+                    maxAppointments,
                     15
             ));
         }
+
+        // Today's fixed slots may already be in the past; the booking
+        // validation rejects them, so drop any that cannot be booked.
+        LocalDateTime earliestBookable = now.plusMinutes(75);
+        slots.removeIf(slot -> date.atTime(slot.start())
+                .isBefore(earliestBookable));
 
         return slots;
     }

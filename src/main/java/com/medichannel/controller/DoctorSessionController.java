@@ -8,6 +8,8 @@ import jakarta.validation.Valid;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
 import com.medichannel.dto.session.DoctorSessionRequest;
@@ -80,49 +82,72 @@ public class DoctorSessionController {
 
     @PatchMapping("/{sessionId}/open")
     public ResponseEntity<DoctorSessionResponse> openSession(
+            @AuthenticationPrincipal Jwt jwt,
             @PathVariable UUID sessionId
     ) {
         return ResponseEntity.ok(
-                doctorSessionService.openSession(sessionId)
+                doctorSessionService.openSession(
+                        sessionId,
+                        UUID.fromString(jwt.getSubject()),
+                        jwt.getClaimAsString("role")
+                )
         );
     }
 
     @PatchMapping("/{sessionId}/start")
     public ResponseEntity<DoctorSessionResponse> startSession(
+            @AuthenticationPrincipal Jwt jwt,
             @PathVariable UUID sessionId
     ) {
         return ResponseEntity.ok(
-                doctorSessionService.startSession(sessionId)
+                doctorSessionService.startSession(
+                        sessionId,
+                        UUID.fromString(jwt.getSubject()),
+                        jwt.getClaimAsString("role")
+                )
         );
     }
 
     @PatchMapping("/{sessionId}/complete")
     public ResponseEntity<DoctorSessionResponse> completeSession(
+            @AuthenticationPrincipal Jwt jwt,
             @PathVariable UUID sessionId
     ) {
         return ResponseEntity.ok(
-                doctorSessionService.completeSession(sessionId)
+                doctorSessionService.completeSession(
+                        sessionId,
+                        UUID.fromString(jwt.getSubject()),
+                        jwt.getClaimAsString("role")
+                )
         );
     }
 
     @PatchMapping("/{sessionId}/cancel")
     public ResponseEntity<DoctorSessionResponse> cancelSession(
+            @AuthenticationPrincipal Jwt jwt,
             @PathVariable UUID sessionId
     ) {
         return ResponseEntity.ok(
-                doctorSessionService.cancelSession(sessionId)
+                doctorSessionService.cancelSession(
+                        sessionId,
+                        UUID.fromString(jwt.getSubject()),
+                        jwt.getClaimAsString("role")
+                )
         );
     }
 
     @PatchMapping("/{sessionId}/delay")
     public ResponseEntity<DoctorSessionResponse> updateDelay(
+            @AuthenticationPrincipal Jwt jwt,
             @PathVariable UUID sessionId,
             @Valid @RequestBody SessionDelayRequest request
     ) {
         return ResponseEntity.ok(
                 doctorSessionService.updateDelay(
                         sessionId,
-                        request.delayMinutes()
+                        request.delayMinutes(),
+                        UUID.fromString(jwt.getSubject()),
+                        jwt.getClaimAsString("role")
                 )
         );
     }

@@ -7,6 +7,9 @@ import java.util.UUID;
 
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.cache.annotation.CacheEvict;
+
+import com.medichannel.config.CacheConfig;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.medichannel.dto.doctor.CreateDoctorRequest;
@@ -63,6 +66,7 @@ public class DoctorService {
      * The new account remains PENDING and emailVerified=false.
      */
     @Transactional
+    @CacheEvict(cacheNames = CacheConfig.PUBLIC_DOCTORS, allEntries = true)
     public DoctorCreatedResponse createDoctor(CreateDoctorRequest request) {
 
         String email = normalizeEmail(request.email());
@@ -158,6 +162,10 @@ public class DoctorService {
     }
 
     @Transactional(readOnly = true)
+    @org.springframework.cache.annotation.Cacheable(
+            cacheNames = CacheConfig.PUBLIC_DOCTORS,
+            key = "#specialisationId == null ? 'all' : #specialisationId.toString()"
+    )
     public List<DoctorResponse> getPublicDirectory(UUID specialisationId) {
 
         List<Doctor> doctors;
@@ -185,6 +193,7 @@ public class DoctorService {
     }
 
     @Transactional
+    @CacheEvict(cacheNames = CacheConfig.PUBLIC_DOCTORS, allEntries = true)
     public DoctorResponse updateDoctor(
             UUID doctorId,
             UpdateDoctorRequest request
@@ -219,6 +228,7 @@ public class DoctorService {
     }
 
     @Transactional
+    @CacheEvict(cacheNames = CacheConfig.PUBLIC_DOCTORS, allEntries = true)
     public DoctorResponse updateAvailability(
             UUID doctorId,
             DoctorAvailabilityRequest request
@@ -304,13 +314,7 @@ public class DoctorService {
             );
         }
 
-        int passwordBytes = password.getBytes(StandardCharsets.UTF_8).length;
-
-        if (password.length() < 12 || passwordBytes > MAX_BCRYPT_PASSWORD_BYTES) {
-            throw new IllegalArgumentException(
-                    "Password must contain at least 12 characters and must not exceed 72 UTF-8 bytes."
-            );
-        }
+        com.medichannel.security.PasswordPolicy.validate(password);
     }
 
     private DoctorResponse toResponse(Doctor doctor) {

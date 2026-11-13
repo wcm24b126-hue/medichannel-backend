@@ -199,6 +199,21 @@ public class SecurityConfig {
                                 "/api/v1/reviews/me"
                         ).hasRole("CUSTOMER")
 
+                        // Feedback moderation: managers and admins only.
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/v1/reviews/manage"
+                        ).hasAnyRole("ADMIN", "MANAGER")
+                        .requestMatchers(
+                                HttpMethod.PATCH,
+                                "/api/v1/reviews/*/approve",
+                                "/api/v1/reviews/*/hide"
+                        ).hasAnyRole("ADMIN", "MANAGER")
+                        .requestMatchers(
+                                HttpMethod.DELETE,
+                                "/api/v1/reviews/*"
+                        ).hasAnyRole("ADMIN", "MANAGER")
+
                         // Patient payment history.
                         .requestMatchers(
                                 HttpMethod.GET,
@@ -245,11 +260,13 @@ public class SecurityConfig {
                                 "/api/v1/specialisations/**"
                         ).permitAll()
 
-                        // Doctor management: Admin or Manager only.
+                        // Doctor account creation is ADMIN-only; managers
+                        // may maintain the clinical profile but may not
+                        // provision privileged accounts.
                         .requestMatchers(
                                 HttpMethod.POST,
                                 "/api/v1/doctors"
-                        ).hasAnyRole("ADMIN", "MANAGER")
+                        ).hasRole("ADMIN")
                         .requestMatchers(
                                 HttpMethod.PUT,
                                 "/api/v1/doctors/**"
@@ -298,17 +315,40 @@ public class SecurityConfig {
                                 "/api/v1/sessions/*/delay"
                         ).hasAnyRole("ADMIN", "MANAGER", "DOCTOR")
 
+                        // Public hospital notices. Managers and admins may
+                        // manage drafts and published notices.
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/v1/notices"
+                        ).permitAll()
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/v1/notices/manage"
+                        ).hasAnyRole("ADMIN", "MANAGER")
+                        .requestMatchers(
+                                "/api/v1/notices",
+                                "/api/v1/notices/**"
+                        ).hasAnyRole("ADMIN", "MANAGER")
+
+                        // Manager and admin dashboards and reports.
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/v1/reports",
+                                "/api/v1/reports/**"
+                        ).hasAnyRole("ADMIN", "MANAGER")
+
                         // Room management: Admin or Manager only.
                         .requestMatchers(
                                 "/api/v1/rooms",
                                 "/api/v1/rooms/**"
                         ).hasAnyRole("ADMIN", "MANAGER")
 
-                        // Audit logs: Admin or Manager only.
+                        // Audit logs: Admin only. Managers must not read
+                        // administrator or security events.
                         .requestMatchers(
                                 "/api/v1/audit-logs",
                                 "/api/v1/audit-logs/**"
-                        ).hasAnyRole("ADMIN", "MANAGER")
+                        ).hasRole("ADMIN")
 
                         // Everything else requires authentication.
                         .anyRequest().authenticated()

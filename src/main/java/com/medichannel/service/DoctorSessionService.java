@@ -17,14 +17,18 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.medichannel.dto.session.DoctorSessionRequest;
 import com.medichannel.dto.session.DoctorSessionResponse;
+import com.medichannel.entity.Appointment;
 import com.medichannel.entity.Doctor;
 import com.medichannel.entity.DoctorSession;
 import com.medichannel.entity.Room;
+import com.medichannel.enums.AppointmentStatus;
 import com.medichannel.enums.ConsultationType;
 import com.medichannel.enums.NotificationType;
 import com.medichannel.enums.SessionStatus;
 import com.medichannel.exception.ConflictException;
+import com.medichannel.exception.ForbiddenOperationException;
 import com.medichannel.exception.ResourceNotFoundException;
+import com.medichannel.repository.AppointmentRepository;
 import com.medichannel.repository.DoctorRepository;
 import com.medichannel.repository.DoctorSessionRepository;
 import com.medichannel.repository.RoomRepository;
@@ -35,6 +39,7 @@ public class DoctorSessionService {
     private final DoctorSessionRepository doctorSessionRepository;
     private final DoctorRepository doctorRepository;
     private final RoomRepository roomRepository;
+    private final AppointmentRepository appointmentRepository;
     private final SessionQueueService sessionQueueService;
     private final AuditLogService auditLogService;
     private final NotificationService notificationService;
@@ -44,6 +49,7 @@ public class DoctorSessionService {
             DoctorSessionRepository doctorSessionRepository,
             DoctorRepository doctorRepository,
             RoomRepository roomRepository,
+            AppointmentRepository appointmentRepository,
             SessionQueueService sessionQueueService,
             AuditLogService auditLogService,
             NotificationService notificationService,
@@ -52,6 +58,7 @@ public class DoctorSessionService {
         this.doctorSessionRepository = doctorSessionRepository;
         this.doctorRepository = doctorRepository;
         this.roomRepository = roomRepository;
+        this.appointmentRepository = appointmentRepository;
         this.sessionQueueService = sessionQueueService;
         this.auditLogService = auditLogService;
         this.notificationService = notificationService;
@@ -219,40 +226,106 @@ public class DoctorSessionService {
     }
 
     @Transactional
-    public DoctorSessionResponse openSession(UUID sessionId) {
-        DoctorSession session = findSession(sessionId);
+    public DoctorSessionResponse openSession(
+            UUID sessionId,
+            UUID actorUserId,
+            String actorRole
+    ) {
+        DoctorSession session = requireActorCanManage(
+                sessionId,
+                actorUserId,
+                actorRole
+        );
         applyTransition(() -> session.open());
         publishQueue(session);
         return toResponse(session);
     }
 
     @Transactional
-    public DoctorSessionResponse startSession(UUID sessionId) {
-        DoctorSession session = findSession(sessionId);
+    public DoctorSessionResponse startSession(
+            UUID sessionId,
+            UUID actorUserId,
+            String actorRole
+    ) {
+        DoctorSession session = requireActorCanManage(
+                sessionId,
+                actorUserId,
+                actorRole
+        );
         applyTransition(() -> session.start());
         publishQueue(session);
         return toResponse(session);
     }
 
     @Transactional
-    public DoctorSessionResponse completeSession(UUID sessionId) {
-        DoctorSession session = findSession(sessionId);
+    public DoctorSessionResponse completeSession(
+            UUID sessionId,
+            UUID actorUserId,
+            String actorRole
+    ) {
+        DoctorSession session = requireActorCanManage(
+                sessionId,
+                actorUserId,
+                actorRole
+        );
         applyTransition(() -> session.complete());
         publishQueue(session);
         return toResponse(session);
     }
 
     @Transactional
-    public DoctorSessionResponse cancelSession(UUID sessionId) {
-        DoctorSession session = findSession(sessionId);
+    public DoctorSessionResponse cancelSession(
+            UUID sessionId,
+            UUID actorUserId,
+            String actorRole
+    ) {
+        DoctorSession session = requireActorCanManage(
+                sessionId,
+                actorUserId,
+                actorRole
+        );
         applyTransition(() -> session.cancel());
+
+        // BR-11/3.3: cancelling a session cancels every appointment in
+        // it. Records are retained (status changes, never deleted) and
+        // each affected patient is notified.
+        String when = session.getSessionDate() + " at " + session.getStartTime();
+        int cancelledAppointments = 0;
+
+        for (Appointment appointment : appointmentRepository
+                .findBySession_IdOrderByAppointmentNumberAsc(sessionId)) {
+            if (appointment.getStatus() == AppointmentStatus.BOOKED
+                    || appointment.getStatus() == AppointmentStatus.ARRIVED
+                    || appointment.getStatus() == AppointmentStatus.IN_CONSULTATION) {
+                appointment.cancelByStaff(clock.instant());
+                appointmentRepository.save(appointment);
+                cancelledAppointments++;
+
+                notificationService.create(
+                        appointment.getPatient().getUser().getId(),
+                        NotificationType.APPOINTMENT_CANCELLED,
+                        "Session cancelled",
+                        "Your session with Dr. "
+                                + session.getDoctor().getFirstName() + " "
+                                + session.getDoctor().getLastName()
+                                + " on " + when
+                                + " has been cancelled. Appointment #"
+                                + appointment.getAppointmentNumber()
+                                + " is cancelled and remains in your history.",
+                        appointment.getId()
+                );
+            }
+        }
+
+        appointmentRepository.flush();
         publishQueue(session);
         auditLogService.log(
                 getActorEmail(),
                 "MANAGER",
                 "Session cancelled",
                 "Session for Dr. " + session.getDoctor().getFirstName() + " " + session.getDoctor().getLastName()
-                        + " on " + session.getSessionDate() + " was cancelled.",
+                        + " on " + session.getSessionDate() + " was cancelled ("
+                        + cancelledAppointments + " appointments cancelled).",
                 "10.0.4.18"
         );
         return toResponse(session);
@@ -261,11 +334,46 @@ public class DoctorSessionService {
     @Transactional
     public DoctorSessionResponse updateDelay(
             UUID sessionId,
-            int delayMinutes
+            int delayMinutes,
+            UUID actorUserId,
+            String actorRole
     ) {
-        DoctorSession session = findSession(sessionId);
+        DoctorSession session = requireActorCanManage(
+                sessionId,
+                actorUserId,
+                actorRole
+        );
         session.updateDelay(delayMinutes);
         publishQueue(session);
+
+        // RT-04: a delay recalculates estimated times and must notify
+        // every patient still waiting in the session.
+        for (Appointment appointment : appointmentRepository
+                .findBySession_IdOrderByAppointmentNumberAsc(sessionId)) {
+            if (appointment.getStatus() == AppointmentStatus.BOOKED
+                    || appointment.getStatus() == AppointmentStatus.ARRIVED) {
+                LocalDateTime estimate = LocalDateTime.of(
+                        session.getSessionDate(),
+                        session.getStartTime()
+                ).plusMinutes(
+                        (long) (appointment.getAppointmentNumber() - 1)
+                                * session.getMinutesPerPatient()
+                                + delayMinutes
+                );
+
+                notificationService.create(
+                        appointment.getPatient().getUser().getId(),
+                        NotificationType.APPOINTMENT_REMINDER,
+                        "Session delayed",
+                        "Your session on " + session.getSessionDate()
+                                + " is delayed by " + delayMinutes
+                                + " minutes. Your new estimated time is "
+                                + estimate.toLocalTime() + ".",
+                        appointment.getId()
+                );
+            }
+        }
+
         auditLogService.log(
                 getActorEmail(),
                 "MANAGER",
@@ -342,6 +450,34 @@ public class DoctorSessionService {
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Doctor session was not found."
                 ));
+    }
+
+    /**
+     * Managers and administrators may manage every session. A doctor
+     * may only change the state of a session assigned to them, which
+     * closes the IDOR hole on the session transition endpoints.
+     */
+    private DoctorSession requireActorCanManage(
+            UUID sessionId,
+            UUID actorUserId,
+            String actorRole
+    ) {
+        DoctorSession session = findSession(sessionId);
+
+        if ("DOCTOR".equalsIgnoreCase(actorRole)) {
+            boolean ownSession = session.getDoctor() != null
+                    && session.getDoctor().getUser() != null
+                    && session.getDoctor().getUser().getId()
+                            .equals(actorUserId);
+
+            if (!ownSession) {
+                throw new ForbiddenOperationException(
+                        "Only the assigned doctor can manage this session."
+                );
+            }
+        }
+
+        return session;
     }
 
     private void publishQueue(DoctorSession session) {

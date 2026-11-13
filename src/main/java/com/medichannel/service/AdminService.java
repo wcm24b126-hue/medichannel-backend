@@ -12,8 +12,11 @@ import com.medichannel.dto.admin.AdminAppointmentResponse;
 import com.medichannel.dto.admin.AdminPaymentResponse;
 import com.medichannel.dto.admin.AdminStatsResponse;
 import com.medichannel.dto.admin.AdminUserResponse;
+import com.medichannel.dto.admin.CreateManagerRequest;
+import com.medichannel.dto.admin.ResetStaffPasswordRequest;
 import com.medichannel.entity.Appointment;
 import com.medichannel.entity.Payment;
+import com.medichannel.entity.Role;
 import com.medichannel.entity.User;
 import com.medichannel.enums.AppointmentStatus;
 import com.medichannel.enums.NotificationType;
@@ -24,8 +27,12 @@ import com.medichannel.repository.AppointmentRepository;
 import com.medichannel.repository.DoctorRepository;
 import com.medichannel.repository.PatientRepository;
 import com.medichannel.repository.PaymentRepository;
+import com.medichannel.repository.RoleRepository;
 import com.medichannel.repository.UserRepository;
+import com.medichannel.security.PasswordPolicy;
 import com.medichannel.security.PatientDataProtectionService;
+
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 @Service
 public class AdminService {
@@ -42,9 +49,12 @@ public class AdminService {
     private final PatientRepository patientRepository;
     private final AppointmentRepository appointmentRepository;
     private final PaymentRepository paymentRepository;
+    private final RoleRepository roleRepository;
     private final AppointmentService appointmentService;
     private final NotificationService notificationService;
     private final PatientDataProtectionService dataProtectionService;
+    private final PasswordEncoder passwordEncoder;
+    private final AuditLogService auditLogService;
 
     public AdminService(
             UserRepository userRepository,
@@ -52,18 +62,24 @@ public class AdminService {
             PatientRepository patientRepository,
             AppointmentRepository appointmentRepository,
             PaymentRepository paymentRepository,
+            RoleRepository roleRepository,
             AppointmentService appointmentService,
             NotificationService notificationService,
-            PatientDataProtectionService dataProtectionService
+            PatientDataProtectionService dataProtectionService,
+            PasswordEncoder passwordEncoder,
+            AuditLogService auditLogService
     ) {
         this.userRepository = userRepository;
         this.doctorRepository = doctorRepository;
         this.patientRepository = patientRepository;
         this.appointmentRepository = appointmentRepository;
         this.paymentRepository = paymentRepository;
+        this.roleRepository = roleRepository;
         this.appointmentService = appointmentService;
         this.notificationService = notificationService;
         this.dataProtectionService = dataProtectionService;
+        this.passwordEncoder = passwordEncoder;
+        this.auditLogService = auditLogService;
     }
 
     @Transactional(readOnly = true)
@@ -161,6 +177,110 @@ public class AdminService {
         User user = findUser(userId);
         user.unlock();
         return toUserResponse(user);
+    }
+
+    /**
+     * ADMIN-only: create a MANAGER account. Public registration can never
+     * produce a privileged role.
+     */
+    @Transactional
+    public AdminUserResponse createManager(
+            UUID actingAdminId,
+            CreateManagerRequest request
+    ) {
+        if (!request.password().equals(request.confirmPassword())) {
+            throw new IllegalArgumentException(
+                    "Password and confirmation do not match."
+            );
+        }
+
+        PasswordPolicy.validate(request.password());
+
+        String normalizedEmail = request.email()
+                .trim()
+                .toLowerCase(Locale.ROOT);
+
+        if (userRepository.existsByEmail(normalizedEmail)) {
+            throw new ConflictException(
+                    "An account with this email already exists."
+            );
+        }
+
+        Role managerRole = roleRepository.findByName("MANAGER")
+                .orElseThrow(() -> new IllegalStateException(
+                        "The required MANAGER role is not configured."
+                ));
+
+        User manager = new User(
+                managerRole,
+                normalizedEmail,
+                passwordEncoder.encode(request.password())
+        );
+        manager.activateByAdministrator();
+
+        User saved = userRepository.saveAndFlush(manager);
+
+        auditLogService.log(
+                actingAdminId == null ? "system" : findUser(actingAdminId).getEmail(),
+                "ADMIN",
+                "Account created (MANAGER)",
+                "Manager account created for " + normalizedEmail,
+                "0.0.0.0"
+        );
+
+        return toUserResponse(saved);
+    }
+
+    /**
+     * ADMIN-only: reset a DOCTOR or MANAGER password. Resetting a password
+     * revokes every existing token for that account.
+     */
+    @Transactional
+    public AdminUserResponse resetStaffPassword(
+            UUID actingAdminId,
+            UUID userId,
+            ResetStaffPasswordRequest request
+    ) {
+        if (!request.newPassword().equals(request.confirmPassword())) {
+            throw new IllegalArgumentException(
+                    "Password and confirmation do not match."
+            );
+        }
+
+        PasswordPolicy.validate(request.newPassword());
+
+        User user = findUser(userId);
+        String role = user.getRole().getName();
+
+        if (!"DOCTOR".equals(role) && !"MANAGER".equals(role)) {
+            throw new ConflictException(
+                    "Passwords can only be reset for doctor and manager accounts."
+            );
+        }
+
+        if (user.getId().equals(actingAdminId)) {
+            throw new ConflictException(
+                    "Administrators cannot reset their own password here."
+            );
+        }
+
+        user.updatePasswordHash(
+                passwordEncoder.encode(request.newPassword())
+        );
+        user.unlock();
+        user.incrementTokenVersion();
+
+        User saved = userRepository.saveAndFlush(user);
+
+        auditLogService.log(
+                actingAdminId == null ? "system" : findUser(actingAdminId).getEmail(),
+                "ADMIN",
+                "Staff password reset",
+                "Password reset for " + user.getEmail() + " (" + role + ")",
+                "0.0.0.0"
+        );
+
+        return toUserResponse(saved);
     }
 
     @Transactional(readOnly = true)

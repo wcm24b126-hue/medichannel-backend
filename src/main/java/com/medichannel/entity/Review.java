@@ -56,6 +56,14 @@ public class Review {
     @Column(name = "comment", length = 1000)
     private String comment;
 
+    /**
+     * Managers may approve, hide or delete feedback. New feedback is
+     * approved by default so patients see their review immediately;
+     * hidden reviews are excluded from public ratings.
+     */
+    @Column(name = "moderation_status", nullable = false, length = 20)
+    private String moderationStatus = "APPROVED";
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -125,6 +133,18 @@ public class Review {
 
     public String getComment() {
         return comment;
+    }
+
+    public String getModerationStatus() {
+        return moderationStatus;
+    }
+
+    public void approve() {
+        moderationStatus = "APPROVED";
+    }
+
+    public void hide() {
+        moderationStatus = "HIDDEN";
     }
 
     public Instant getCreatedAt() {
