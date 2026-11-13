@@ -21,6 +21,7 @@ import com.medichannel.entity.Doctor;
 import com.medichannel.entity.DoctorSession;
 import com.medichannel.entity.Room;
 import com.medichannel.enums.ConsultationType;
+import com.medichannel.enums.NotificationType;
 import com.medichannel.enums.SessionStatus;
 import com.medichannel.exception.ConflictException;
 import com.medichannel.exception.ResourceNotFoundException;
@@ -36,6 +37,7 @@ public class DoctorSessionService {
     private final RoomRepository roomRepository;
     private final SessionQueueService sessionQueueService;
     private final AuditLogService auditLogService;
+    private final NotificationService notificationService;
     private final Clock clock;
 
     public DoctorSessionService(
@@ -44,6 +46,7 @@ public class DoctorSessionService {
             RoomRepository roomRepository,
             SessionQueueService sessionQueueService,
             AuditLogService auditLogService,
+            NotificationService notificationService,
             Clock clock
     ) {
         this.doctorSessionRepository = doctorSessionRepository;
@@ -51,6 +54,7 @@ public class DoctorSessionService {
         this.roomRepository = roomRepository;
         this.sessionQueueService = sessionQueueService;
         this.auditLogService = auditLogService;
+        this.notificationService = notificationService;
         this.clock = clock;
     }
 
@@ -119,6 +123,18 @@ public class DoctorSessionService {
                             + " on " + request.sessionDate() + " (" + request.startTime() + " - " + request.endTime() + ")",
                     "10.0.4.18"
             );
+
+            try {
+                notificationService.create(
+                        doctor.getUser().getId(),
+                        NotificationType.ACCOUNT_STATUS_CHANGED,
+                        "New session scheduled",
+                        "A " + request.consultationType() + " consultation session has been scheduled for you on "
+                                + request.sessionDate() + " (" + request.startTime() + " - " + request.endTime() + ").",
+                        null
+                );
+            } catch (Exception ignored) {
+            }
 
             return toResponse(savedSession);
 

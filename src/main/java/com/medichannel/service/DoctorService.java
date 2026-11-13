@@ -18,6 +18,7 @@ import com.medichannel.entity.Doctor;
 import com.medichannel.entity.Role;
 import com.medichannel.entity.Specialisation;
 import com.medichannel.entity.User;
+import com.medichannel.enums.NotificationType;
 import com.medichannel.exception.ConflictException;
 import com.medichannel.exception.ResourceNotFoundException;
 import com.medichannel.repository.DoctorRepository;
@@ -37,6 +38,7 @@ public class DoctorService {
     private final SpecialisationRepository specialisationRepository;
     private final PasswordEncoder passwordEncoder;
     private final AuditLogService auditLogService;
+    private final NotificationService notificationService;
 
     public DoctorService(
             DoctorRepository doctorRepository,
@@ -44,7 +46,8 @@ public class DoctorService {
             RoleRepository roleRepository,
             SpecialisationRepository specialisationRepository,
             PasswordEncoder passwordEncoder,
-            AuditLogService auditLogService
+            AuditLogService auditLogService,
+            NotificationService notificationService
     ) {
         this.doctorRepository = doctorRepository;
         this.userRepository = userRepository;
@@ -52,6 +55,7 @@ public class DoctorService {
         this.specialisationRepository = specialisationRepository;
         this.passwordEncoder = passwordEncoder;
         this.auditLogService = auditLogService;
+        this.notificationService = notificationService;
     }
 
     /*
@@ -131,6 +135,17 @@ public class DoctorService {
                 "Doctor account created for Dr. " + savedDoctor.getFirstName() + " " + savedDoctor.getLastName() + " (" + email + ")",
                 "10.0.1.5"
         );
+
+        try {
+            notificationService.create(
+                    savedUser.getId(),
+                    NotificationType.ACCOUNT_STATUS_CHANGED,
+                    "Doctor account created",
+                    "Doctor account created for Dr. " + savedDoctor.getFirstName() + " " + savedDoctor.getLastName() + ". Account is active.",
+                    null
+            );
+        } catch (Exception ignored) {
+        }
 
         return new DoctorCreatedResponse(
                 "Doctor account and profile created. The account is active and ready for login.",
