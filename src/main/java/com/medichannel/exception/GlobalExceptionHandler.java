@@ -150,8 +150,8 @@ public class GlobalExceptionHandler {
         String referenceId = getReferenceId(request);
 
         logger.error(
-                "Unexpected application error. Reference ID: {}",
-                referenceId
+                "Unexpected application error. Reference ID: " + referenceId,
+                exception
         );
 
         ApiErrorResponse response = new ApiErrorResponse(

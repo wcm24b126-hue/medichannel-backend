@@ -141,8 +141,7 @@ public class ConsultationSummaryService {
         );
 
         boolean allowed = patientOwner
-                || accessPolicy.isAssignedDoctor(appointment, actorUserId)
-                || accessPolicy.isStaff(actorRole);
+                || accessPolicy.isAssignedDoctor(appointment, actorUserId);
 
         if (!allowed) {
             throw new ForbiddenOperationException(

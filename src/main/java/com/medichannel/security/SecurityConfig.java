@@ -274,7 +274,7 @@ public class SecurityConfig {
                                 "/api/v1/sessions/*/complete",
                                 "/api/v1/sessions/*/cancel",
                                 "/api/v1/sessions/*/delay"
-                        ).hasAnyRole("ADMIN", "MANAGER")
+                        ).hasAnyRole("ADMIN", "MANAGER", "DOCTOR")
 
                         // Room management: Admin or Manager only.
                         .requestMatchers(
