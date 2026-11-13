@@ -10,6 +10,7 @@ import org.springframework.messaging.simp.config.MessageBrokerRegistry;
 import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
 import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
+import org.springframework.web.socket.config.annotation.WebSocketTransportRegistration;
 
 @Configuration
 @EnableWebSocketMessageBroker
@@ -40,6 +41,20 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         registry.addEndpoint("/ws")
                 .setAllowedOrigins(frontendOrigin.trim().split("\\s*,\\s*"));
+    }
+
+    /**
+     * Bound individual STOMP frames and slow-client buffering.
+     * Chat text is separately limited to 1,000 characters by ChatService.
+     */
+    @Override
+    public void configureWebSocketTransport(
+            WebSocketTransportRegistration registration
+    ) {
+        registration
+                .setMessageSizeLimit(16 * 1024)
+                .setSendBufferSizeLimit(512 * 1024)
+                .setSendTimeLimit(10_000);
     }
 
     @Override
