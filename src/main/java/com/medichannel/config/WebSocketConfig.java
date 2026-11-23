@@ -64,6 +64,20 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         registration.setTimeToFirstMessage(30 * 1000);
     }
 
+    /**
+     * Bound individual STOMP frames and slow-client buffering.
+     * Chat text is separately limited to 1,000 characters by ChatService.
+     */
+    @Override
+    public void configureWebSocketTransport(
+            WebSocketTransportRegistration registration
+    ) {
+        registration
+                .setMessageSizeLimit(16 * 1024)
+                .setSendBufferSizeLimit(512 * 1024)
+                .setSendTimeLimit(10_000);
+    }
+
     @Override
     public void configureClientInboundChannel(ChannelRegistration registration) {
         registration.interceptors(
