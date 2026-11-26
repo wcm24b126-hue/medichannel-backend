@@ -1,6 +1,6 @@
 # MediChannel database design
 
-MediChannel uses PostgreSQL 18 with Flyway migrations `V1`–`V15`. The
+MediChannel uses PostgreSQL 18 with Flyway migrations `V1`–`V29`. The
 canonical DDL is checked in as [`schema.sql`](./schema.sql), generated with
 `pg_dump --schema-only` from a database that has all migrations applied.
 
@@ -197,5 +197,6 @@ Patient names, phone, date of birth, gender, address and NIC, appointment
 reasons, consultation summaries and chat messages are stored as AES-256-GCM
 ciphertext (`v1:` prefix). NIC lookup uses a separate HMAC-SHA-256 hash so
 duplicate detection does not require decryption. Passwords are BCrypt
-(work factor 12). The only remaining plaintext personal identifier is the
-login email on `users.email`, which must stay queryable for authentication.
+(work factor 12). Email is also stored as AES-GCM ciphertext with a separate
+HMAC-SHA256 lookup column, so login and uniqueness checks do not require
+plaintext at rest.
