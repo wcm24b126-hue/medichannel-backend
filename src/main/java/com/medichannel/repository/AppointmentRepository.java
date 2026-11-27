@@ -6,6 +6,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -174,6 +176,46 @@ public interface AppointmentRepository
             findAllByPatient_User_IdAndPatientHiddenAtIsNullOrderByCreatedAtDesc(
                     UUID userId
             );
+
+    // Active/actionable patient appointments ordered by upcoming session date/time.
+    @Query("""
+            SELECT a
+            FROM Appointment a
+            JOIN a.session s
+            WHERE a.patient.user.id = :userId
+              AND a.patientHiddenAt IS NULL
+              AND a.status IN :statuses
+            ORDER BY s.sessionDate ASC, s.startTime ASC, a.id ASC
+            """)
+    List<Appointment> findActiveByPatientUserId(
+            @Param("userId") UUID userId,
+            @Param("statuses") Collection<AppointmentStatus> statuses
+    );
+
+    // Paginated closed patient history ordered by most recent session date/time.
+    @Query(
+            value = """
+                    SELECT a
+                    FROM Appointment a
+                    JOIN a.session s
+                    WHERE a.patient.user.id = :userId
+                      AND a.patientHiddenAt IS NULL
+                      AND a.status IN :statuses
+                    ORDER BY s.sessionDate DESC, s.startTime DESC, a.id DESC
+                    """,
+            countQuery = """
+                    SELECT COUNT(a)
+                    FROM Appointment a
+                    WHERE a.patient.user.id = :userId
+                      AND a.patientHiddenAt IS NULL
+                      AND a.status IN :statuses
+                    """
+    )
+    Page<Appointment> findHistoryByPatientUserId(
+            @Param("userId") UUID userId,
+            @Param("statuses") Collection<AppointmentStatus> statuses,
+            Pageable pageable
+    );
 
     // Retrieve one appointment only if it belongs to the given patient.
     Optional<Appointment> findByIdAndPatient_User_Id(

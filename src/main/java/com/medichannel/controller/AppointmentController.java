@@ -16,6 +16,7 @@ import com.medichannel.dto.appointment.AppointmentBookingRequest;
 import com.medichannel.dto.appointment.AppointmentDelayRequest;
 import com.medichannel.dto.appointment.AppointmentResponse;
 import com.medichannel.dto.appointment.CancelAppointmentRequest;
+import com.medichannel.dto.common.PagedResponse;
 import com.medichannel.service.AppointmentService;
 
 @RestController
@@ -53,6 +54,30 @@ public class AppointmentController {
 
         return ResponseEntity.ok(
                 appointmentService.getMyAppointments(userId)
+        );
+    }
+
+    @GetMapping("/me/active")
+    public ResponseEntity<List<AppointmentResponse>> getMyActiveAppointments(
+            @AuthenticationPrincipal Jwt jwt
+    ) {
+        UUID userId = UUID.fromString(jwt.getSubject());
+
+        return ResponseEntity.ok(
+                appointmentService.getMyActiveAppointments(userId)
+        );
+    }
+
+    @GetMapping("/me/history")
+    public ResponseEntity<PagedResponse<AppointmentResponse>> getMyAppointmentHistory(
+            @AuthenticationPrincipal Jwt jwt,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size
+    ) {
+        UUID userId = UUID.fromString(jwt.getSubject());
+
+        return ResponseEntity.ok(
+                appointmentService.getMyAppointmentHistory(userId, page, size)
         );
     }
 

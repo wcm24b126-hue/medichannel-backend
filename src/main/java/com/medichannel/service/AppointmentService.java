@@ -9,6 +9,10 @@ import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,6 +23,7 @@ import com.medichannel.dto.admin.AdminAppointmentResponse;
 import com.medichannel.dto.appointment.AppointmentBookingRequest;
 import com.medichannel.dto.appointment.AppointmentResponse;
 import com.medichannel.dto.appointment.WalkInBookingRequest;
+import com.medichannel.dto.common.PagedResponse;
 import com.medichannel.dto.doctor.DoctorAppointmentResponse;
 import com.medichannel.dto.queue.CompleteAndAdvanceResponse;
 import com.medichannel.dto.queue.SessionQueueResponse;
@@ -48,12 +53,23 @@ import com.medichannel.security.PatientDataProtectionService;
 @Service
 public class AppointmentService {
 
+    public static final int DEFAULT_PAGE = 0;
+    public static final int DEFAULT_PAGE_SIZE = 20;
+    public static final int MAX_PAGE_SIZE = 100;
+
     private static final List<AppointmentStatus> ACTIVE_STATUSES =
             List.of(
                     AppointmentStatus.BOOKED,
                     AppointmentStatus.CHECKED_IN,
                     AppointmentStatus.ARRIVED,
                     AppointmentStatus.IN_CONSULTATION
+            );
+
+    private static final List<AppointmentStatus> CLOSED_HISTORY_STATUSES =
+            List.of(
+                    AppointmentStatus.COMPLETED,
+                    AppointmentStatus.CANCELLED,
+                    AppointmentStatus.NO_SHOW
             );
 
     private final AppointmentRepository appointmentRepository;
@@ -321,6 +337,53 @@ public class AppointmentService {
                 .stream()
                 .map(this::toResponse)
                 .toList();
+    }
+
+    public void validatePagination(int page, int size) {
+        if (page < 0) {
+            throw new IllegalArgumentException("Page index must not be negative.");
+        }
+        if (size <= 0) {
+            throw new IllegalArgumentException("Page size must be greater than zero.");
+        }
+        if (size > MAX_PAGE_SIZE) {
+            throw new IllegalArgumentException(
+                    "Page size must not exceed " + MAX_PAGE_SIZE + "."
+            );
+        }
+    }
+
+    // GET: List all actionable/upcoming appointments for the authenticated customer.
+    @Transactional(readOnly = true)
+    public List<AppointmentResponse> getMyActiveAppointments(UUID userId) {
+        getEligiblePatient(userId);
+
+        return appointmentRepository
+                .findActiveByPatientUserId(userId, ACTIVE_STATUSES)
+                .stream()
+                .map(this::toResponse)
+                .toList();
+    }
+
+    // GET: Paginated closed appointment history for the authenticated customer.
+    @Transactional(readOnly = true)
+    public PagedResponse<AppointmentResponse> getMyAppointmentHistory(
+            UUID userId,
+            int page,
+            int size
+    ) {
+        validatePagination(page, size);
+        getEligiblePatient(userId);
+
+        Pageable pageable = PageRequest.of(page, size);
+        Page<Appointment> appointments = appointmentRepository
+                .findHistoryByPatientUserId(
+                        userId,
+                        CLOSED_HISTORY_STATUSES,
+                        pageable
+                );
+
+        return PagedResponse.from(appointments.map(this::toResponse));
     }
 
     // GET: Retrieve one appointment belonging to the authenticated customer.
