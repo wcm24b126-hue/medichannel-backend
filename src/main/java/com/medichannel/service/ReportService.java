@@ -67,23 +67,17 @@ public class ReportService {
         List<DailyAppointmentCount> perDay =
                 appointmentsPerDay(rangeStart, rangeEnd);
 
-        long physical = countByType(rangeStart, rangeEnd, "PHYSICAL");
-        long online = countByType(rangeStart, rangeEnd, "ONLINE");
+        AppointmentMetrics apptMetrics = appointmentMetrics(rangeStart, rangeEnd);
 
-        long[] statusCounts = appointmentStatusCounts(
-                rangeStart,
-                rangeEnd
-        );
-        long total = statusCounts[0];
-        long noShows = statusCounts[1];
-        long cancelled = statusCounts[2];
-
-        double noShowRate = total == 0
+        long eligibleNoShow = apptMetrics.total - apptMetrics.cancelled;
+        double noShowRate = eligibleNoShow <= 0
                 ? 0.0
-                : round(noShows * 100.0 / total, 2);
+                : round(apptMetrics.noShows * 100.0 / eligibleNoShow, 2);
 
         BigDecimal revenue = revenue(rangeStart, rangeEnd);
         long completedPayments = completedPayments(rangeStart, rangeEnd);
+
+        SessionTodayMetrics sessionMetrics = sessionTodayMetrics(today);
 
         return new ReportOverviewResponse(
                 rangeStart,
@@ -93,16 +87,32 @@ public class ReportService {
                 sessionsThisWeek,
                 todaySessions,
                 perDay,
-                physical,
-                online,
-                total,
-                noShows,
-                cancelled,
+                apptMetrics.physical,
+                apptMetrics.online,
+                apptMetrics.total,
+                apptMetrics.noShows,
+                apptMetrics.cancelled,
                 noShowRate,
                 revenue,
                 completedPayments,
                 topDoctors(rangeStart, rangeEnd),
-                doctorRatings()
+                doctorRatings(),
+                apptMetrics.completed,
+                apptMetrics.booked,
+                apptMetrics.checkedIn,
+                apptMetrics.arrived,
+                apptMetrics.inConsultation,
+                apptMetrics.unpaid,
+                apptMetrics.unpaidAmount,
+                sessionMetrics.doctorsToday,
+                sessionMetrics.roomsToday,
+                sessionMetrics.sessionsToday,
+                sessionMetrics.activeSessionsToday,
+                sessionMetrics.completedSessionsToday,
+                sessionMetrics.cancelledSessionsToday,
+                sessionMetrics.totalCapacity,
+                sessionMetrics.bookedCapacity,
+                sessionMetrics.occupancyRate
         );
     }
 
@@ -140,6 +150,7 @@ public class ReportService {
                        s.consultation_type,
                        s.status,
                        s.max_appointments,
+                       COALESCE(s.delay_minutes, 0) AS delay_minutes,
                        COUNT(a.id) FILTER (
                            WHERE a.status <> 'CANCELLED'
                        ) AS booked,
@@ -154,7 +165,8 @@ public class ReportService {
                 WHERE s.session_date = ?
                 GROUP BY s.id, d.first_name, d.last_name, sp.name,
                          r.room_number, s.start_time, s.end_time,
-                         s.consultation_type, s.status, s.max_appointments
+                         s.consultation_type, s.status, s.max_appointments,
+                         s.delay_minutes
                 ORDER BY s.start_time
                 """;
 
@@ -171,7 +183,8 @@ public class ReportService {
                         rs.getString("status"),
                         rs.getInt("max_appointments"),
                         rs.getLong("booked"),
-                        rs.getLong("completed")
+                        rs.getLong("completed"),
+                        rs.getInt("delay_minutes")
                 ),
                 Date.valueOf(today)
         );
@@ -201,55 +214,117 @@ public class ReportService {
         );
     }
 
-    private long countByType(
-            LocalDate from,
-            LocalDate to,
-            String type
-    ) {
+    private AppointmentMetrics appointmentMetrics(LocalDate from, LocalDate to) {
         String sql = """
+                SELECT COUNT(a.id) AS total,
+                       COUNT(a.id) FILTER (WHERE a.status = 'NO_SHOW') AS no_shows,
+                       COUNT(a.id) FILTER (WHERE a.status = 'CANCELLED') AS cancelled,
+                       COUNT(a.id) FILTER (WHERE a.status = 'COMPLETED') AS completed,
+                       COUNT(a.id) FILTER (WHERE a.status = 'BOOKED') AS booked,
+                       COUNT(a.id) FILTER (WHERE a.status = 'CHECKED_IN') AS checked_in,
+                       COUNT(a.id) FILTER (WHERE a.status = 'ARRIVED') AS arrived,
+                       COUNT(a.id) FILTER (WHERE a.status = 'IN_CONSULTATION') AS in_consultation,
+                       COUNT(a.id) FILTER (WHERE s.consultation_type = 'PHYSICAL') AS physical,
+                       COUNT(a.id) FILTER (WHERE s.consultation_type = 'ONLINE') AS online,
+                       COUNT(a.id) FILTER (WHERE a.status <> 'CANCELLED' AND a.payment_status <> 'PAID') AS unpaid,
+                       COALESCE(SUM(s.fee_lkr) FILTER (WHERE a.status <> 'CANCELLED' AND a.payment_status <> 'PAID'), 0) AS unpaid_amount
+                FROM appointments a
+                JOIN doctor_sessions s ON s.id = a.session_id
+                WHERE s.session_date BETWEEN ? AND ?
+                """;
+
+        AppointmentMetrics metrics = jdbcTemplate.queryForObject(
+                sql,
+                (rs, rowNum) -> new AppointmentMetrics(
+                        rs.getLong("total"),
+                        rs.getLong("no_shows"),
+                        rs.getLong("cancelled"),
+                        rs.getLong("completed"),
+                        rs.getLong("booked"),
+                        rs.getLong("checked_in"),
+                        rs.getLong("arrived"),
+                        rs.getLong("in_consultation"),
+                        rs.getLong("physical"),
+                        rs.getLong("online"),
+                        rs.getLong("unpaid"),
+                        rs.getBigDecimal("unpaid_amount") == null
+                                ? BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP)
+                                : rs.getBigDecimal("unpaid_amount").setScale(2, RoundingMode.HALF_UP)
+                ),
+                Date.valueOf(from),
+                Date.valueOf(to)
+        );
+
+        return metrics != null
+                ? metrics
+                : new AppointmentMetrics(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
+    }
+
+    private SessionTodayMetrics sessionTodayMetrics(LocalDate today) {
+        String sessionSql = """
+                SELECT COUNT(s.id) AS sessions_today,
+                       COUNT(s.id) FILTER (WHERE s.status IN ('OPEN', 'IN_PROGRESS')) AS active_sessions_today,
+                       COUNT(s.id) FILTER (WHERE s.status = 'COMPLETED') AS completed_sessions_today,
+                       COUNT(s.id) FILTER (WHERE s.status = 'CANCELLED') AS cancelled_sessions_today,
+                       COUNT(DISTINCT s.doctor_id) FILTER (WHERE s.status <> 'CANCELLED') AS doctors_today,
+                       COUNT(DISTINCT s.room_id) FILTER (WHERE s.status <> 'CANCELLED' AND s.room_id IS NOT NULL) AS rooms_today,
+                       COALESCE(SUM(s.max_appointments) FILTER (WHERE s.status <> 'CANCELLED'), 0) AS total_capacity
+                FROM doctor_sessions s
+                WHERE s.session_date = ?
+                """;
+
+        SessionTodayRow row = jdbcTemplate.queryForObject(
+                sessionSql,
+                (rs, rowNum) -> new SessionTodayRow(
+                        rs.getLong("sessions_today"),
+                        rs.getLong("active_sessions_today"),
+                        rs.getLong("completed_sessions_today"),
+                        rs.getLong("cancelled_sessions_today"),
+                        rs.getLong("doctors_today"),
+                        rs.getLong("rooms_today"),
+                        rs.getLong("total_capacity")
+                ),
+                Date.valueOf(today)
+        );
+
+        long sessionsToday = row != null ? row.sessionsToday : 0L;
+        long activeSessionsToday = row != null ? row.activeSessionsToday : 0L;
+        long completedSessionsToday = row != null ? row.completedSessionsToday : 0L;
+        long cancelledSessionsToday = row != null ? row.cancelledSessionsToday : 0L;
+        long doctorsToday = row != null ? row.doctorsToday : 0L;
+        long roomsToday = row != null ? row.roomsToday : 0L;
+        long totalCapacity = row != null ? row.totalCapacity : 0L;
+
+        String capacitySql = """
                 SELECT COUNT(a.id)
                 FROM appointments a
                 JOIN doctor_sessions s ON s.id = a.session_id
-                WHERE s.session_date BETWEEN ? AND ?
-                  AND s.consultation_type = ?
+                WHERE s.session_date = ?
+                  AND s.status <> 'CANCELLED'
+                  AND a.status <> 'CANCELLED'
                 """;
 
-        Long count = jdbcTemplate.queryForObject(
-                sql,
+        Long bookedCount = jdbcTemplate.queryForObject(
+                capacitySql,
                 Long.class,
-                Date.valueOf(from),
-                Date.valueOf(to),
-                type
+                Date.valueOf(today)
         );
-        return count == null ? 0 : count;
-    }
+        long bookedCapacity = bookedCount != null ? bookedCount : 0L;
 
-    /**
-     * Returns {total, noShows, cancelled} for the range.
-     */
-    private long[] appointmentStatusCounts(LocalDate from, LocalDate to) {
-        String sql = """
-                SELECT COUNT(a.id) AS total,
-                       COUNT(a.id) FILTER (
-                           WHERE a.status = 'NO_SHOW'
-                       ) AS no_shows,
-                       COUNT(a.id) FILTER (
-                           WHERE a.status = 'CANCELLED'
-                       ) AS cancelled
-                FROM appointments a
-                JOIN doctor_sessions s ON s.id = a.session_id
-                WHERE s.session_date BETWEEN ? AND ?
-                """;
+        double occupancyRate = totalCapacity <= 0
+                ? 0.0
+                : round(bookedCapacity * 100.0 / totalCapacity, 2);
 
-        return jdbcTemplate.queryForObject(
-                sql,
-                (rs, rowNum) -> new long[]{
-                        rs.getLong("total"),
-                        rs.getLong("no_shows"),
-                        rs.getLong("cancelled")
-                },
-                Date.valueOf(from),
-                Date.valueOf(to)
+        return new SessionTodayMetrics(
+                sessionsToday,
+                activeSessionsToday,
+                completedSessionsToday,
+                cancelledSessionsToday,
+                doctorsToday,
+                roomsToday,
+                totalCapacity,
+                bookedCapacity,
+                occupancyRate
         );
     }
 
@@ -359,4 +434,41 @@ public class ReportService {
                 .setScale(scale, RoundingMode.HALF_UP)
                 .doubleValue();
     }
+
+    private record AppointmentMetrics(
+            long total,
+            long noShows,
+            long cancelled,
+            long completed,
+            long booked,
+            long checkedIn,
+            long arrived,
+            long inConsultation,
+            long physical,
+            long online,
+            long unpaid,
+            BigDecimal unpaidAmount
+    ) {}
+
+    private record SessionTodayRow(
+            long sessionsToday,
+            long activeSessionsToday,
+            long completedSessionsToday,
+            long cancelledSessionsToday,
+            long doctorsToday,
+            long roomsToday,
+            long totalCapacity
+    ) {}
+
+    private record SessionTodayMetrics(
+            long sessionsToday,
+            long activeSessionsToday,
+            long completedSessionsToday,
+            long cancelledSessionsToday,
+            long doctorsToday,
+            long roomsToday,
+            long totalCapacity,
+            long bookedCapacity,
+            double occupancyRate
+    ) {}
 }
