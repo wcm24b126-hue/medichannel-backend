@@ -14,6 +14,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,6 +26,7 @@ import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
 import com.medichannel.dto.audit.AuditLogResponse;
+import com.medichannel.dto.common.PagedResponse;
 import com.medichannel.entity.AuditLog;
 import com.medichannel.entity.User;
 import com.medichannel.repository.AuditLogRepository;
@@ -39,6 +44,10 @@ import jakarta.servlet.http.HttpServletRequest;
  */
 @Service
 public class AuditLogService {
+
+    public static final int DEFAULT_PAGE = 0;
+    public static final int DEFAULT_PAGE_SIZE = 20;
+    public static final int MAX_PAGE_SIZE = 100;
 
     private static final Logger log = LoggerFactory.getLogger(AuditLogService.class);
 
@@ -221,6 +230,37 @@ public class AuditLogService {
                 ipAddress,
                 null
         );
+    }
+
+    public void validatePagination(int page, int size) {
+        if (page < 0) {
+            throw new IllegalArgumentException("Page index must not be negative.");
+        }
+        if (size <= 0) {
+            throw new IllegalArgumentException("Page size must be greater than zero.");
+        }
+        if (size > MAX_PAGE_SIZE) {
+            throw new IllegalArgumentException(
+                    "Page size must not exceed " + MAX_PAGE_SIZE + "."
+            );
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public PagedResponse<AuditLogResponse> getAuditLogs(int page, int size, UUID userId) {
+        validatePagination(page, size);
+        Sort sort = Sort.by(Sort.Direction.DESC, "createdAt")
+                .and(Sort.by(Sort.Direction.DESC, "id"));
+        Pageable pageable = PageRequest.of(page, size, sort);
+        Page<AuditLog> logs = userId != null
+                ? auditLogRepository.findByUserId(userId, pageable)
+                : auditLogRepository.findAll(pageable);
+        return PagedResponse.from(logs.map(this::toResponse));
+    }
+
+    @Transactional(readOnly = true)
+    public PagedResponse<AuditLogResponse> getAuditLogs(int page, int size) {
+        return getAuditLogs(page, size, null);
     }
 
     @Transactional(readOnly = true)

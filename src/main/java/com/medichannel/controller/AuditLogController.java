@@ -1,14 +1,16 @@
 package com.medichannel.controller;
 
-import java.util.List;
+import java.util.UUID;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.medichannel.dto.audit.AuditLogResponse;
+import com.medichannel.dto.common.PagedResponse;
 import com.medichannel.service.AuditLogService;
 
 @RestController
@@ -27,7 +29,11 @@ public class AuditLogController {
      */
     @GetMapping
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<List<AuditLogResponse>> getAuditLogs() {
-        return ResponseEntity.ok(auditLogService.getRecentAuditLogs());
+    public ResponseEntity<PagedResponse<AuditLogResponse>> getAuditLogs(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) UUID userId
+    ) {
+        return ResponseEntity.ok(auditLogService.getAuditLogs(page, size, userId));
     }
 }
