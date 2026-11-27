@@ -535,11 +535,11 @@ public class AppointmentService {
                 appointment
         );
 
-        notificationService.create(
+        notificationService.createOnceForAppointment(
                 saved.getSession().getDoctor().getUser().getId(),
                 NotificationType.APPOINTMENT_ARRIVED,
                 "Patient checked in",
-                "The patient for appointment #"
+                "Your patient for appointment #"
                         + saved.getAppointmentNumber()
                         + " has checked in and is waiting for arrival confirmation.",
                 saved.getId()
@@ -665,11 +665,11 @@ public class AppointmentService {
         String when = appointment.getSession().getSessionDate()
                 + " at " + appointment.getSession().getStartTime();
 
-        notificationService.create(
+        notificationService.createOnceForAppointment(
                 appointment.getPatient().getUser().getId(),
                 NotificationType.APPOINTMENT_BOOKED,
                 "Appointment Accepted",
-                "The doctor has accepted your appointment on " + when + ". Make sure to be ready on time.",
+                "Your appointment has been accepted by the doctor for " + when + ". Payment is now available.",
                 appointment.getId()
         );
 
@@ -724,11 +724,11 @@ public class AppointmentService {
         String when = appointment.getSession().getSessionDate()
                 + " at " + appointment.getSession().getStartTime();
 
-        notificationService.create(
+        notificationService.createOnceForAppointment(
                 appointment.getPatient().getUser().getId(),
                 NotificationType.APPOINTMENT_CANCELLED,
                 "Appointment Declined",
-                "The doctor was unable to accept your appointment on " + when + ". Please book another session.",
+                "Your appointment could not be accepted for " + when + ". Please book another session.",
                 appointment.getId()
         );
 
@@ -848,10 +848,10 @@ public class AppointmentService {
                 appointment
         );
 
-        notificationService.create(
+        notificationService.createOnceForAppointment(
                 saved.getPatient().getUser().getId(),
                 NotificationType.APPOINTMENT_ARRIVED,
-                "You are checked in",
+                "Arrival recorded",
                 "Your arrival for appointment #"
                         + saved.getAppointmentNumber()
                         + " has been recorded.",
@@ -897,13 +897,23 @@ public class AppointmentService {
                 appointment
         );
 
-        notificationService.create(
+        notificationService.createOnceForAppointment(
                 saved.getPatient().getUser().getId(),
                 NotificationType.APPOINTMENT_ARRIVED,
-                "You are checked in",
+                "Arrival recorded",
                 "Your arrival for appointment #"
                         + saved.getAppointmentNumber()
                         + " has been recorded.",
+                saved.getId()
+        );
+
+        notificationService.createOnceForAppointment(
+                saved.getSession().getDoctor().getUser().getId(),
+                NotificationType.APPOINTMENT_ARRIVED,
+                "Patient arrived",
+                "Your patient for appointment #"
+                        + saved.getAppointmentNumber()
+                        + " has arrived.",
                 saved.getId()
         );
 
@@ -961,11 +971,15 @@ public class AppointmentService {
                 appointment
         );
 
-        notificationService.create(
+        String startedMessage = physical
+                ? "Your consultation has started. Please proceed to the consultation room."
+                : "Your online consultation is ready. You can join now.";
+
+        notificationService.createOnceForAppointment(
                 saved.getPatient().getUser().getId(),
                 NotificationType.CONSULTATION_STARTED,
                 "Consultation started",
-                "Your consultation has started. You can now use the consultation chat.",
+                startedMessage,
                 saved.getId()
         );
 
@@ -996,7 +1010,7 @@ public class AppointmentService {
                 appointment
         );
 
-        notificationService.create(
+        notificationService.createOnceForAppointment(
                 saved.getPatient().getUser().getId(),
                 NotificationType.CONSULTATION_COMPLETED,
                 "Consultation completed",
@@ -1037,7 +1051,7 @@ public class AppointmentService {
                 appointment
         );
 
-        notificationService.create(
+        notificationService.createOnceForAppointment(
                 saved.getPatient().getUser().getId(),
                 NotificationType.APPOINTMENT_CANCELLED,
                 "Appointment marked as no-show",
@@ -1099,7 +1113,7 @@ public class AppointmentService {
                 appointment
         );
 
-        notificationService.create(
+        notificationService.createOnceForAppointment(
                 completed.getPatient().getUser().getId(),
                 NotificationType.CONSULTATION_COMPLETED,
                 "Consultation completed",
@@ -1146,7 +1160,7 @@ public class AppointmentService {
                     // RT-04: being called is distinct from the
                     // CONSULTATION_STARTED notification sent by the
                     // explicit start endpoint.
-                    notificationService.create(
+                    notificationService.createOnceForAppointment(
                             started.getPatient().getUser().getId(),
                             NotificationType.CALLED,
                             "You are next",
@@ -1326,8 +1340,10 @@ public class AppointmentService {
     private void notifyAppointmentBooked(Appointment appointment) {
         String when = appointment.getSession().getSessionDate()
                 + " at " + appointment.getSession().getStartTime();
+        String consultationTypeLabel = appointment.getSession().getConsultationType()
+                == ConsultationType.ONLINE ? "online" : "physical";
 
-        notificationService.create(
+        notificationService.createOnceForAppointment(
                 appointment.getPatient().getUser().getId(),
                 NotificationType.APPOINTMENT_BOOKED,
                 "Appointment booked",
@@ -1337,11 +1353,11 @@ public class AppointmentService {
                 appointment.getId()
         );
 
-        notificationService.create(
+        notificationService.createOnceForAppointment(
                 appointment.getSession().getDoctor().getUser().getId(),
                 NotificationType.APPOINTMENT_BOOKED,
                 "New appointment booked",
-                "A patient booked appointment #"
+                "A patient booked " + consultationTypeLabel + " appointment #"
                         + appointment.getAppointmentNumber()
                         + " for " + when + ".",
                 appointment.getId()
@@ -1352,7 +1368,7 @@ public class AppointmentService {
         String when = appointment.getSession().getSessionDate()
                 + " at " + appointment.getSession().getStartTime();
 
-        notificationService.create(
+        notificationService.createOnceForAppointment(
                 appointment.getPatient().getUser().getId(),
                 NotificationType.APPOINTMENT_CANCELLED,
                 "Appointment cancelled",
@@ -1362,7 +1378,7 @@ public class AppointmentService {
                 appointment.getId()
         );
 
-        notificationService.create(
+        notificationService.createOnceForAppointment(
                 appointment.getSession().getDoctor().getUser().getId(),
                 NotificationType.APPOINTMENT_CANCELLED,
                 "Appointment cancelled",

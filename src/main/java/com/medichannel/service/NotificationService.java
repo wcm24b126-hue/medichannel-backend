@@ -86,6 +86,31 @@ public class NotificationService {
         return response;
     }
 
+    /**
+     * Persist a notification at most once per (appointment, recipient, type, title)
+     * so retried workflow transitions cannot produce duplicate alerts.
+     */
+    @Transactional
+    public NotificationResponse createOnceForAppointment(
+            UUID recipientUserId,
+            NotificationType type,
+            String title,
+            String message,
+            UUID appointmentId
+    ) {
+        if (appointmentId != null
+                && notificationRepository
+                        .existsByAppointment_IdAndUser_IdAndTypeAndTitle(
+                                appointmentId,
+                                recipientUserId,
+                                type,
+                                title
+                        )) {
+            return null;
+        }
+        return create(recipientUserId, type, title, message, appointmentId);
+    }
+
     @Transactional(readOnly = true)
     public List<NotificationResponse> getMyNotifications(UUID userId) {
         return notificationRepository

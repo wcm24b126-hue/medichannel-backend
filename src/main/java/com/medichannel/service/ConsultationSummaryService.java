@@ -87,7 +87,7 @@ public class ConsultationSummaryService {
                 summary
         );
 
-        notificationService.create(
+        notificationService.createOnceForAppointment(
                 appointment.getPatient().getUser().getId(),
                 NotificationType.SUMMARY_AVAILABLE,
                 "Consultation summary available",

@@ -216,7 +216,7 @@ public class PaymentService {
 
         String reference = payment.getPaymentReference();
 
-        notificationService.create(
+        notificationService.createOnceForAppointment(
                 patientUserId,
                 NotificationType.PAYMENT_RECEIVED,
                 "Payment received",
@@ -227,7 +227,7 @@ public class PaymentService {
                 appointment.getId()
         );
 
-        notificationService.create(
+        notificationService.createOnceForAppointment(
                 doctorUserId,
                 NotificationType.PAYMENT_RECEIVED,
                 "Appointment payment received",
