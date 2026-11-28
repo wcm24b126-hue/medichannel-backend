@@ -14,10 +14,14 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.medichannel.config.ClinicSchedule;
+import com.medichannel.dto.common.PagedResponse;
 import com.medichannel.dto.session.DoctorSessionRequest;
 import com.medichannel.dto.session.DoctorSessionResponse;
 import com.medichannel.entity.Appointment;
@@ -540,6 +544,88 @@ public class DoctorSessionService {
                         activeCounts.getOrDefault(session.getId(), 0L)
                 ))
                 .toList();
+    }
+
+    // Server-side paginated public discovery of future sessions with capacity.
+    @Transactional(readOnly = true)
+    public PagedResponse<DoctorSessionResponse> searchPublicSessions(
+            UUID doctorId,
+            UUID specialisationId,
+            LocalDate sessionDate,
+            LocalDate fromDate,
+            LocalDate toDate,
+            String doctorName,
+            ConsultationType consultationType,
+            LocalTime period,
+            int page,
+            int size
+    ) {
+        if (page < 0) {
+            throw new IllegalArgumentException("Page index must not be negative.");
+        }
+        if (size <= 0) {
+            throw new IllegalArgumentException("Page size must be greater than zero.");
+        }
+        if (size > 100) {
+            throw new IllegalArgumentException("Page size must not exceed 100.");
+        }
+
+        LocalDateTime now = LocalDateTime.now(clock);
+
+        if (fromDate != null && toDate != null && fromDate.isAfter(toDate)) {
+            LocalDate earlier = fromDate;
+            fromDate = toDate;
+            toDate = earlier;
+        }
+
+        String query = doctorName == null
+                ? null
+                : doctorName.trim().toLowerCase(Locale.ROOT);
+        LocalTime periodStart = period == null ? null : period;
+        LocalTime periodEnd = period == null ? null : ClinicSchedule.periodEnd(period);
+        Pageable pageable = PageRequest.of(page, size);
+
+        Page<DoctorSession> sessionsPage = doctorSessionRepository.findPublicOpenSessionsPage(
+                SessionStatus.OPEN,
+                now.toLocalDate(),
+                ConsultationType.PHYSICAL,
+                ClinicSchedule.bookingCutoff(
+                        now.toLocalTime(),
+                        ConsultationType.PHYSICAL
+                ),
+                ClinicSchedule.bookingCutoff(
+                        now.toLocalTime(),
+                        ConsultationType.ONLINE
+                ),
+                doctorId,
+                specialisationId,
+                sessionDate == null ? null : sessionDate.toString(),
+                fromDate == null ? null : fromDate.toString(),
+                toDate == null ? null : toDate.toString(),
+                query == null || query.isEmpty() ? null : query,
+                consultationType,
+                periodStart,
+                periodEnd,
+                ClinicSchedule.MORNING_START,
+                ClinicSchedule.MORNING_END,
+                ClinicSchedule.EVENING_START,
+                ClinicSchedule.EVENING_END,
+                ClinicSchedule.MINUTES_PER_PATIENT,
+                ClinicSchedule.MAX_APPOINTMENTS_PER_SESSION,
+                ACTIVE_APPOINTMENT_STATUSES,
+                pageable
+        );
+
+        Map<UUID, Long> activeCounts = activeCountsBySessionId(
+                sessionsPage.getContent().stream().map(DoctorSession::getId).toList()
+        );
+
+        return PagedResponse.from(
+                sessionsPage.map(session -> toResponse(
+                        session,
+                        activeCounts.getOrDefault(session.getId(), 0L)
+                ))
+        );
     }
 
     // Get the details of one session.

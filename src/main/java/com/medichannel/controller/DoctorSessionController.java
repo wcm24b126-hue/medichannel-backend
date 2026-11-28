@@ -13,6 +13,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
+import com.medichannel.dto.common.PagedResponse;
 import com.medichannel.dto.session.DoctorSessionRequest;
 import com.medichannel.dto.session.DoctorSessionResponse;
 import com.medichannel.dto.session.SessionCancellationRequest;
@@ -54,6 +55,36 @@ public class DoctorSessionController {
                         q,
                         consultationType,
                         period
+                )
+        );
+    }
+
+    // Server-side paginated public discovery of future open sessions.
+    @GetMapping("/search")
+    public ResponseEntity<PagedResponse<DoctorSessionResponse>> searchPublicSessions(
+            @RequestParam(required = false) UUID doctorId,
+            @RequestParam(required = false) UUID specialisationId,
+            @RequestParam(required = false) LocalDate date,
+            @RequestParam(required = false) LocalDate from,
+            @RequestParam(required = false) LocalDate to,
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) ConsultationType consultationType,
+            @RequestParam(required = false) LocalTime period,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "12") int size
+    ) {
+        return ResponseEntity.ok(
+                doctorSessionService.searchPublicSessions(
+                        doctorId,
+                        specialisationId,
+                        date,
+                        from,
+                        to,
+                        q,
+                        consultationType,
+                        period,
+                        page,
+                        size
                 )
         );
     }

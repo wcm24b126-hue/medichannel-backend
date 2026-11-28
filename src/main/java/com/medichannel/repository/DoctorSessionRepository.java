@@ -7,6 +7,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -136,7 +138,7 @@ public interface DoctorSessionRepository
                     :consultationType IS NULL
                     OR s.consultationType = :consultationType
               )
-            ORDER BY s.sessionDate ASC, s.startTime ASC
+            ORDER BY s.sessionDate ASC, s.startTime ASC, LOWER(d.firstName) ASC, LOWER(d.lastName) ASC, s.id ASC
             """)
     List<DoctorSession> findPublicOpenSessions(
             @Param("status") SessionStatus status,
@@ -158,6 +160,171 @@ public interface DoctorSessionRepository
             @Param("minutesPerPatient") int minutesPerPatient,
             @Param("maxAppointmentsPerSession") int maxAppointmentsPerSession,
             @Param("activeStatuses") Collection<AppointmentStatus> activeStatuses
+    );
+
+    @Query(
+        value = """
+            SELECT s
+            FROM DoctorSession s
+            JOIN FETCH s.doctor d
+            JOIN FETCH d.specialisation sp
+            JOIN FETCH d.user u
+            LEFT JOIN FETCH s.room r
+            WHERE s.status = :status
+              AND (
+                    :sessionDate IS NOT NULL
+                    OR s.sessionDate >= :today
+              )
+              AND (
+                    :sessionDate IS NULL
+                    OR CAST(s.sessionDate AS string) = :sessionDate
+              )
+              AND (
+                    :fromDate IS NULL
+                    OR CAST(s.sessionDate AS string) >= :fromDate
+              )
+              AND (
+                    :toDate IS NULL
+                    OR CAST(s.sessionDate AS string) <= :toDate
+              )
+              AND (
+                    s.sessionDate > :today
+                    OR (
+                        s.sessionDate = :today
+                        AND (
+                            (
+                                s.consultationType = :physicalType
+                                AND s.startTime > :physicalBookingCutoff
+                            )
+                            OR (
+                                (s.consultationType IS NULL
+                                    OR s.consultationType <> :physicalType)
+                                AND s.startTime > :onlineBookingCutoff
+                            )
+                        )
+                    )
+              )
+              AND (SELECT COUNT(a) FROM Appointment a
+                   WHERE a.session.id = s.id
+                     AND a.status IN :activeStatuses)
+                  < s.maxAppointments
+              AND (
+                    (s.startTime = :morningStart AND s.endTime = :morningEnd)
+                    OR (s.startTime = :afternoonStart AND s.endTime = :afternoonEnd)
+              )
+              AND s.minutesPerPatient = :minutesPerPatient
+              AND s.maxAppointments <= :maxAppointmentsPerSession
+              AND d.available = true
+              AND sp.active = true
+              AND u.accountStatus = 'ACTIVE'
+              AND u.emailVerified = true
+              AND (:doctorId IS NULL OR d.id = :doctorId)
+              AND (:specialisationId IS NULL OR sp.id = :specialisationId)
+              AND (
+                    :q IS NULL
+                    OR LOWER(CONCAT(d.firstName, ' ', d.lastName))
+                        LIKE LOWER(CONCAT('%', CAST(:q AS string), '%'))
+              )
+              AND (
+                    :consultationType IS NULL
+                    OR s.consultationType = :consultationType
+              )
+              AND (:periodStart IS NULL OR s.endTime > :periodStart)
+              AND (:periodEnd IS NULL OR s.startTime < :periodEnd)
+            ORDER BY s.sessionDate ASC, s.startTime ASC, LOWER(d.firstName) ASC, LOWER(d.lastName) ASC, s.id ASC
+            """,
+        countQuery = """
+            SELECT COUNT(s)
+            FROM DoctorSession s
+            JOIN s.doctor d
+            JOIN d.specialisation sp
+            JOIN d.user u
+            WHERE s.status = :status
+              AND (
+                    :sessionDate IS NOT NULL
+                    OR s.sessionDate >= :today
+              )
+              AND (
+                    :sessionDate IS NULL
+                    OR CAST(s.sessionDate AS string) = :sessionDate
+              )
+              AND (
+                    :fromDate IS NULL
+                    OR CAST(s.sessionDate AS string) >= :fromDate
+              )
+              AND (
+                    :toDate IS NULL
+                    OR CAST(s.sessionDate AS string) <= :toDate
+              )
+              AND (
+                    s.sessionDate > :today
+                    OR (
+                        s.sessionDate = :today
+                        AND (
+                            (
+                                s.consultationType = :physicalType
+                                AND s.startTime > :physicalBookingCutoff
+                            )
+                            OR (
+                                (s.consultationType IS NULL
+                                    OR s.consultationType <> :physicalType)
+                                AND s.startTime > :onlineBookingCutoff
+                            )
+                        )
+                    )
+              )
+              AND (SELECT COUNT(a) FROM Appointment a
+                   WHERE a.session.id = s.id
+                     AND a.status IN :activeStatuses)
+                  < s.maxAppointments
+              AND (
+                    (s.startTime = :morningStart AND s.endTime = :morningEnd)
+                    OR (s.startTime = :afternoonStart AND s.endTime = :afternoonEnd)
+              )
+              AND s.minutesPerPatient = :minutesPerPatient
+              AND s.maxAppointments <= :maxAppointmentsPerSession
+              AND d.available = true
+              AND sp.active = true
+              AND u.accountStatus = 'ACTIVE'
+              AND u.emailVerified = true
+              AND (:doctorId IS NULL OR d.id = :doctorId)
+              AND (:specialisationId IS NULL OR sp.id = :specialisationId)
+              AND (
+                    :q IS NULL
+                    OR LOWER(CONCAT(d.firstName, ' ', d.lastName))
+                        LIKE LOWER(CONCAT('%', CAST(:q AS string), '%'))
+              )
+              AND (
+                    :consultationType IS NULL
+                    OR s.consultationType = :consultationType
+              )
+              AND (:periodStart IS NULL OR s.endTime > :periodStart)
+              AND (:periodEnd IS NULL OR s.startTime < :periodEnd)
+            """
+    )
+    Page<DoctorSession> findPublicOpenSessionsPage(
+            @Param("status") SessionStatus status,
+            @Param("today") LocalDate today,
+            @Param("physicalType") ConsultationType physicalType,
+            @Param("physicalBookingCutoff") LocalTime physicalBookingCutoff,
+            @Param("onlineBookingCutoff") LocalTime onlineBookingCutoff,
+            @Param("doctorId") UUID doctorId,
+            @Param("specialisationId") UUID specialisationId,
+            @Param("sessionDate") String sessionDate,
+            @Param("fromDate") String fromDate,
+            @Param("toDate") String toDate,
+            @Param("q") String q,
+            @Param("consultationType") ConsultationType consultationType,
+            @Param("periodStart") LocalTime periodStart,
+            @Param("periodEnd") LocalTime periodEnd,
+            @Param("morningStart") LocalTime morningStart,
+            @Param("morningEnd") LocalTime morningEnd,
+            @Param("afternoonStart") LocalTime afternoonStart,
+            @Param("afternoonEnd") LocalTime afternoonEnd,
+            @Param("minutesPerPatient") int minutesPerPatient,
+            @Param("maxAppointmentsPerSession") int maxAppointmentsPerSession,
+            @Param("activeStatuses") Collection<AppointmentStatus> activeStatuses,
+            Pageable pageable
     );
 
     /**

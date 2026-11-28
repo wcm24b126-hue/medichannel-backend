@@ -350,7 +350,8 @@ public class SecurityConfig {
                         // signed-in doctor view calls the queue with a token.
                         .requestMatchers(
                                 HttpMethod.GET,
-                                "/api/v1/sessions"
+                                "/api/v1/sessions",
+                                "/api/v1/sessions/search"
                         ).permitAll()
 
                         // Doctor session creation: Admin or Manager only.
