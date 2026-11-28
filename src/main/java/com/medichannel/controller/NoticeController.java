@@ -12,6 +12,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
+import com.medichannel.dto.common.PagedResponse;
 import com.medichannel.dto.notice.NoticeRequest;
 import com.medichannel.dto.notice.NoticeResponse;
 import com.medichannel.service.NoticeService;
@@ -32,10 +33,14 @@ public class NoticeController {
         return ResponseEntity.ok(noticeService.getPublishedNotices());
     }
 
-    // Managers and administrators see drafts as well.
+    // Managers and administrators see drafts as well, with server-side pagination.
     @GetMapping("/manage")
-    public ResponseEntity<List<NoticeResponse>> getAllNotices() {
-        return ResponseEntity.ok(noticeService.getAllNotices());
+    public ResponseEntity<PagedResponse<NoticeResponse>> getAllNotices(
+            @RequestParam(required = false) Boolean published,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size
+    ) {
+        return ResponseEntity.ok(noticeService.getManagerNotices(published, page, size));
     }
 
     @PostMapping
