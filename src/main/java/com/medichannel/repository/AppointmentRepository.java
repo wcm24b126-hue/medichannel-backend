@@ -217,6 +217,43 @@ public interface AppointmentRepository
             Pageable pageable
     );
 
+    // Paginated closed doctor appointment history ordered by most recent session date/time.
+    @Query(
+            value = """
+                    SELECT a
+                    FROM Appointment a
+                    JOIN a.session s
+                    WHERE s.doctor.user.id = :userId
+                      AND a.doctorHiddenAt IS NULL
+                      AND a.status IN :statuses
+                      AND (:status IS NULL OR a.status = :status)
+                      AND (:sessionDate IS NULL OR s.sessionDate = :sessionDate)
+                    ORDER BY s.sessionDate DESC, s.startTime DESC, a.id DESC
+                    """,
+            countQuery = """
+                    SELECT COUNT(a)
+                    FROM Appointment a
+                    JOIN a.session s
+                    WHERE s.doctor.user.id = :userId
+                      AND a.doctorHiddenAt IS NULL
+                      AND a.status IN :statuses
+                      AND (:status IS NULL OR a.status = :status)
+                      AND (:sessionDate IS NULL OR s.sessionDate = :sessionDate)
+                    """
+    )
+    Page<Appointment> findHistoryByDoctorUserId(
+            @Param("userId") UUID userId,
+            @Param("statuses") Collection<AppointmentStatus> statuses,
+            @Param("status") AppointmentStatus status,
+            @Param("sessionDate") LocalDate sessionDate,
+            Pageable pageable
+    );
+
+    List<Appointment> findAllBySession_Doctor_User_IdAndStatusInAndDoctorHiddenAtIsNullOrderBySession_SessionDateAscSession_StartTimeAscAppointmentNumberAsc(
+            UUID userId,
+            Collection<AppointmentStatus> statuses
+    );
+
     // Retrieve one appointment only if it belongs to the given patient.
     Optional<Appointment> findByIdAndPatient_User_Id(
             UUID appointmentId,

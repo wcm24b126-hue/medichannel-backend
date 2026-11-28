@@ -12,6 +12,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
 import com.medichannel.dto.appointment.CancelAppointmentRequest;
+import com.medichannel.dto.common.PagedResponse;
 import com.medichannel.dto.doctor.DoctorAppointmentResponse;
 import com.medichannel.dto.doctor.DoctorResponse;
 import com.medichannel.dto.queue.CompleteAndAdvanceResponse;
@@ -60,6 +61,38 @@ public class DoctorPortalController {
                         userId(jwt),
                         date,
                         status
+                )
+        );
+    }
+
+    @GetMapping("/appointments/active")
+    public ResponseEntity<List<DoctorAppointmentResponse>> getActiveAppointments(
+            @AuthenticationPrincipal Jwt jwt,
+            @RequestParam(required = false) UUID sessionId
+    ) {
+        return ResponseEntity.ok(
+                appointmentService.getDoctorActiveAppointments(
+                        userId(jwt),
+                        sessionId
+                )
+        );
+    }
+
+    @GetMapping("/appointments/history")
+    public ResponseEntity<PagedResponse<DoctorAppointmentResponse>> getAppointmentHistory(
+            @AuthenticationPrincipal Jwt jwt,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) AppointmentStatus status,
+            @RequestParam(required = false) LocalDate date
+    ) {
+        return ResponseEntity.ok(
+                appointmentService.getDoctorAppointmentHistory(
+                        userId(jwt),
+                        page,
+                        size,
+                        status,
+                        date
                 )
         );
     }

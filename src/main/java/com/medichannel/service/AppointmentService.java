@@ -617,6 +617,65 @@ public class AppointmentService {
     // Doctor consultation portal
     // =========================================================
 
+    // GET: Paginated closed appointment history for the authenticated doctor.
+    @Transactional(readOnly = true)
+    public PagedResponse<DoctorAppointmentResponse> getDoctorAppointmentHistory(
+            UUID doctorUserId,
+            int page,
+            int size,
+            AppointmentStatus status,
+            LocalDate date
+    ) {
+        validatePagination(page, size);
+
+        if (status != null && !CLOSED_HISTORY_STATUSES.contains(status)) {
+            return new PagedResponse<>(List.of(), page, size, 0, 0, true, true);
+        }
+
+        Pageable pageable = PageRequest.of(page, size);
+        Page<Appointment> appointments = appointmentRepository
+                .findHistoryByDoctorUserId(
+                        doctorUserId,
+                        CLOSED_HISTORY_STATUSES,
+                        status,
+                        date,
+                        pageable
+                );
+
+        return PagedResponse.from(appointments.map(this::toDoctorResponse));
+    }
+
+    // GET: List all active/actionable appointments for the authenticated doctor.
+    @Transactional(readOnly = true)
+    public List<DoctorAppointmentResponse> getDoctorActiveAppointments(
+            UUID doctorUserId,
+            UUID sessionId
+    ) {
+        if (sessionId != null) {
+            DoctorSession session = doctorSessionRepository
+                    .findByIdAndDoctor_User_Id(sessionId, doctorUserId)
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            "Doctor session was not found."
+                    ));
+
+            return appointmentRepository
+                    .findBySession_IdAndDoctorHiddenAtIsNullOrderByAppointmentNumberAsc(session.getId())
+                    .stream()
+                    .filter(a -> ACTIVE_STATUSES.contains(a.getStatus()))
+                    .map(this::toDoctorResponse)
+                    .toList();
+        }
+
+        return appointmentRepository
+                .findAllBySession_Doctor_User_IdAndStatusInAndDoctorHiddenAtIsNullOrderBySession_SessionDateAscSession_StartTimeAscAppointmentNumberAsc(
+                        doctorUserId,
+                        ACTIVE_STATUSES
+                )
+                .stream()
+                .map(this::toDoctorResponse)
+                .toList();
+    }
+
     @Transactional(readOnly = true)
     public List<DoctorAppointmentResponse> getDoctorAppointments(
             UUID doctorUserId,
