@@ -12,6 +12,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
+import com.medichannel.dto.common.PagedResponse;
 import com.medichannel.dto.review.DoctorReviewsResponse;
 import com.medichannel.dto.review.ReviewRequest;
 import com.medichannel.dto.review.ReviewResponse;
@@ -49,22 +50,30 @@ public class ReviewController {
         return ResponseEntity.ok(reviewService.getMyReviews(userId));
     }
 
-    // Public doctor reviews and average rating.
+    // Public doctor reviews and average rating with server-side pagination.
     @GetMapping("/doctors/{doctorId}/reviews")
     public ResponseEntity<DoctorReviewsResponse> getDoctorReviews(
-            @PathVariable UUID doctorId
+            @PathVariable UUID doctorId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size
     ) {
         return ResponseEntity.ok(
-                reviewService.getDoctorReviews(doctorId)
+                reviewService.getDoctorReviews(doctorId, page, size)
         );
     }
 
-    // Manager feedback moderation.
+    // Manager feedback moderation with server-side pagination.
     @GetMapping("/reviews/manage")
-    public ResponseEntity<List<ReviewResponse>> getFeedbackForModeration(
-            @RequestParam(required = false) String status
+    public ResponseEntity<PagedResponse<ReviewResponse>> getFeedbackForModeration(
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) UUID doctorId,
+            @RequestParam(required = false) Integer rating,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size
     ) {
-        return ResponseEntity.ok(reviewService.getForModeration(status));
+        return ResponseEntity.ok(
+                reviewService.getForModeration(status, doctorId, rating, page, size)
+        );
     }
 
     @PatchMapping("/reviews/{reviewId}/approve")

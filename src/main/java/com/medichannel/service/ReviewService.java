@@ -6,9 +6,13 @@ import java.util.List;
 import java.util.UUID;
 
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.medichannel.dto.common.PagedResponse;
 import com.medichannel.dto.review.DoctorReviewsResponse;
 import com.medichannel.dto.review.ReviewRequest;
 import com.medichannel.dto.review.ReviewResponse;
@@ -27,6 +31,8 @@ import com.medichannel.repository.UserRepository;
 
 @Service
 public class ReviewService {
+
+    public static final int MAX_PAGE_SIZE = 100;
 
     private final ReviewRepository reviewRepository;
     private final AppointmentRepository appointmentRepository;
@@ -55,6 +61,20 @@ public class ReviewService {
         this.notificationService = notificationService;
         this.auditLogService = auditLogService;
         this.userRepository = userRepository;
+    }
+
+    public void validatePagination(int page, int size) {
+        if (page < 0) {
+            throw new IllegalArgumentException("Page index must not be negative.");
+        }
+        if (size <= 0) {
+            throw new IllegalArgumentException("Page size must be greater than zero.");
+        }
+        if (size > MAX_PAGE_SIZE) {
+            throw new IllegalArgumentException(
+                    "Page size must not exceed " + MAX_PAGE_SIZE + "."
+            );
+        }
     }
 
     @Transactional
@@ -128,19 +148,18 @@ public class ReviewService {
     }
 
     @Transactional(readOnly = true)
-    public DoctorReviewsResponse getDoctorReviews(UUID doctorId) {
+    public DoctorReviewsResponse getDoctorReviews(UUID doctorId, int page, int size) {
+        validatePagination(page, size);
         Doctor doctor = doctorRepository.findById(doctorId)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Doctor was not found."
                 ));
 
-        List<Review> reviews = reviewRepository
-                .findByDoctor_IdAndModerationStatusOrderByCreatedAtDesc(
-                        doctorId,
-                        "APPROVED"
-                );
+        Pageable pageable = PageRequest.of(page, size);
+        Page<Review> reviewPage = reviewRepository.findApprovedByDoctorId(doctorId, pageable);
 
         Double average = reviewRepository.averageRatingByDoctorId(doctorId);
+        long totalReviews = reviewRepository.countByDoctor_IdAndModerationStatus(doctorId, "APPROVED");
 
         return new DoctorReviewsResponse(
                 doctor.getId(),
@@ -149,9 +168,19 @@ public class ReviewService {
                         : BigDecimal.valueOf(average)
                                 .setScale(2, RoundingMode.HALF_UP)
                                 .doubleValue(),
-                reviews.size(),
-                reviews.stream().map(this::toResponse).toList()
+                totalReviews,
+                reviewPage.getContent().stream().map(this::toResponse).toList(),
+                reviewPage.getNumber(),
+                reviewPage.getSize(),
+                reviewPage.getTotalPages(),
+                reviewPage.isFirst(),
+                reviewPage.isLast()
         );
+    }
+
+    @Transactional(readOnly = true)
+    public DoctorReviewsResponse getDoctorReviews(UUID doctorId) {
+        return getDoctorReviews(doctorId, 0, 20);
     }
 
     @Transactional(readOnly = true)
@@ -163,16 +192,38 @@ public class ReviewService {
                 .toList();
     }
 
-    // Manager feedback moderation.
+    // Manager feedback moderation with pagination and optional filtering.
     @Transactional(readOnly = true)
-    public List<ReviewResponse> getForModeration(String status) {
-        List<Review> reviews = status == null || status.isBlank()
-                ? reviewRepository.findAllByOrderByCreatedAtDesc()
-                : reviewRepository.findByModerationStatusOrderByCreatedAtDesc(
-                        status.trim().toUpperCase()
-                );
+    public PagedResponse<ReviewResponse> getForModeration(
+            String status,
+            UUID doctorId,
+            Integer rating,
+            int page,
+            int size
+    ) {
+        validatePagination(page, size);
+        if (rating != null && (rating < 1 || rating > 5)) {
+            throw new IllegalArgumentException("Rating must be between 1 and 5.");
+        }
 
-        return reviews.stream().map(this::toResponse).toList();
+        String normalizedStatus = status == null || status.isBlank()
+                ? null
+                : status.trim().toUpperCase();
+
+        Pageable pageable = PageRequest.of(page, size);
+        Page<Review> reviews = reviewRepository.findForModeration(
+                normalizedStatus,
+                doctorId,
+                rating,
+                pageable
+        );
+
+        return PagedResponse.from(reviews.map(this::toResponse));
+    }
+
+    @Transactional(readOnly = true)
+    public PagedResponse<ReviewResponse> getForModeration(String status) {
+        return getForModeration(status, null, null, 0, 20);
     }
 
     @Transactional
